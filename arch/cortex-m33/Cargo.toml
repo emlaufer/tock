@@ -1,16 +1,9 @@
 [package]
-name = "nrf5x"
+name = "cortexm33"
 version = "0.1.0"
 authors = ["Tock Project Developers <tock-dev@googlegroups.com>"]
 edition = "2018"
 
 [dependencies]
 kernel = { path = "../../kernel" }
-enum_primitive = { path = "../../libraries/enum_primitive" }
-
-[features]
-default = []
-
-nrf51 = []
-nrf52 = []
-nrf53 = []
+cortexm = { path = "../cortex-m" }
