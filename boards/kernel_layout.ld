@@ -110,7 +110,7 @@ SECTIONS
         /* .gnu.linkonce hold C++ elements with vague linkage
                 https://gcc.gnu.org/onlinedocs/gcc/Vague-Linkage.html */
         *(.text .text.* .gnu.linkonce.t.*)
-        
+
         _srodata = .;
         *(.rodata .rodata.* .gnu.linkonce.r.*)
 
@@ -190,7 +190,7 @@ SECTIONS
 
     /* Region for on-chip kernel non-volatile storage.
      *
-     * Align on PAGE_SIZE number of bytes. Volumes within this region are 
+     * Align on PAGE_SIZE number of bytes. Volumes within this region are
      * allocated with the storage_volume! macro in utils.rs.
      */
     .storage :
@@ -232,11 +232,18 @@ SECTIONS
         . = ALIGN(4);
         _sapps = .;
 
-        /* Include a placeholder byte in this section so that the linker
+        /* Include placeholder bytes in this section so that the linker
          * includes a segment for it. Otherwise the section will be empty and
          * the linker will ignore it when defining the segments.
+         * If less then 4 bytes, some linkers set this section to size 0
+         * and openocd fails to write it.
+         *
+         * An issue has been submitted https://github.com/raspberrypi/openocd/issues/25
          */
-        BYTE(0)
+        BYTE(0xFF)
+        BYTE(0xFF)
+        BYTE(0xFF)
+        BYTE(0xFF)
     } > prog
     /* _eapps symbol used by tock to calculate the length of app flash */
     _eapps = _sapps + LENGTH(prog);
@@ -255,7 +262,7 @@ SECTIONS
      * Tock assumes the relocation section follows all static elements and will
      * copy (_erelocate - _srelocate) bytes from _etext to _srelocate.
      */
-    .relocate : AT (_etext)
+    .relocate :
     {
         . = ALIGN(4);
         _srelocate = .;
@@ -284,7 +291,7 @@ SECTIONS
 
         . = ALIGN(4);
         _erelocate = .;
-    } > ram
+    } > ram AT>rom
 
 
     .sram (NOLOAD) :
