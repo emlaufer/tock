@@ -31,29 +31,30 @@ const NVMC_BASE_NETWORK: StaticRef<NvmcRegisters> =
 
 register_structs! {
     pub NvmcRegisters {
+        (0x000 => _reserved1),
         /// Ready flag
         (0x400 => ready: ReadOnly<u32, Ready::Register>),
-        (0x404 => _reserved1),
+        (0x404 => _reserved2),
         ///Ready flag for new operation
         (0x408 => readynext: ReadOnly<u32, Ready::Register>),
-        (0x40C => _reserved2),
+        (0x40C => _reserved3),
         /// Configuration register
         (0x504 => config: ReadWrite<u32, Configuration::Register>),
-        (0x508 => _reserved3),
+        (0x508 => _reserved4),
         /// Erase all non-volatile user memory
         (0x50C => eraseall: WriteOnly<u32, EraseAll::Register>),
-        (0x510 => _reserved4),
+        (0x510 => _reserved5),
         /// Configure partial page erase
         (0x51C => erasepagepartialcfg: ReadWrite<u32, ErasePagePartialCfg::Register>),
-        (0x520 => _reserved5),
+        (0x520 => _reserved6),
         /// I-code cache configuration
         (0x540 => iacachecnf: ReadWrite<u32, CacheConfiguration::Register>),
-        (0x544 => _reserved6),
+        (0x544 => _reserved7),
         /// I-code cache hit counter
         (0x548 => ihit: ReadWrite<u32, CacheHit::Register>),
         /// I-code cache miss counter
         (0x54C => imiss: ReadWrite<u32, CacheMiss::Register>),
-        (0x550 => _reserved7),
+        (0x550 => _reserved8),
         /// Non-secure program memory access mode.
         (0x584 => configns: ReadWrite<u32, ConfigNs::Register>),
         /// Enable non-secure APPROTECT

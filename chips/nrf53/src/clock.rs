@@ -101,12 +101,13 @@ register_structs! {
     },
 
     OscillatorsRegisters {
+        (0 => _reserved1),
         /// Programmable capacitance of XC1 and XC2
         (0x5C4 => xosc32mcaps: ReadWrite<u32, Capacitance::Register>),
-        (0x5C8 => _reserved1),
+        (0x5C8 => _reserved2),
         /// Enable bypass of LFCLK crystal oscillator with external clock source
         (0x6C0 => xosc32ki_bypass: ReadWrite<u32, Control::Register>),
-        (0x6C4 => _reserved2),
+        (0x6C4 => _reserved3),
         /// Control usage of internal load capacitors
         (0x6D0 => xosc32ki_intcap: ReadWrite<u32, IntCap::Register>),
         (0x6D4 => @END),

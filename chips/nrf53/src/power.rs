@@ -92,9 +92,10 @@ register_structs! {
     },
 
     VReqCtrlRegisters {
+        (0x000 => _reserved1),
         /// Request high voltage on radio
         (0x500 => vregradio_vreqh: ReadWrite<u32, Task::Register>),
-        (0x504 => _reserved1),
+        (0x504 => _reserved2),
         /// Signals when high voltage on radio is ready
         (0x508 => vregradio_vreqready: ReadOnly<u32, Event::Register>),
         (0x50C => @END),

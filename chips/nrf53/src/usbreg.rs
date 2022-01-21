@@ -13,27 +13,28 @@ const USBREG_BASE_SECURE: StaticRef<UsbRegRegisters> =
 
 register_structs! {
     UsbRegRegisters {
+        (0x000 => _reserved1),
         /// Voltage supply detected on VBUS
         (0x100 => event_usbdetected: ReadWrite<u32, Event::Register>),
         /// Voltage supply removed from VBUS
         (0x104 => event_usbremoved: ReadWrite<u32, Event::Register>),
         /// USB 3.3V supply ready
         (0x108 => event_usbpwrrdy: ReadWrite<u32, Event::Register>),
-        (0x10C => _reserved1),
+        (0x10C => _reserved2),
         /// Publish configuration for USB detection event
         (0x180 => publish_usbdetected: ReadWrite<u32, DPPIConfig::Register>),
         /// Publish configuration for USB removal event
         (0x184 => publish_usbremoved: ReadWrite<u32, DPPIConfig::Register>),
         /// Publish configuration for USB power ready event
         (0x188 => publish_usbpwrrdy: ReadWrite<u32, DPPIConfig::Register>),
-        (0x18C => _reserved2),
+        (0x18C => _reserved3),
         /// Enable or disable interrupt
         (0x300 => inten: ReadWrite<u32, Interrupt::Register>),
         /// Enable interrupt
         (0x304 => intenset: ReadWrite<u32, Interrupt::Register>),
         /// Disable interrupt
         (0x308 => intenclr: ReadWrite<u32, Interrupt::Register>),
-        (0x30C => _reserved3),
+        (0x30C => _reserved4),
         /// USB supply status
         (0x400 => usbregstatus: ReadOnly<u32, UsbRegStatus::Register>),
         (0x404 => @END),
