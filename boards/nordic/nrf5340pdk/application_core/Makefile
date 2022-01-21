@@ -26,6 +26,10 @@ endif
 
 TOCKLOADER_JTAG_FLAGS = --jlink --board nrf5340dk
 
+# Default target for installing the kernel.
+.PHONY: install
+install: flash
+
 # Upload the kernel over JTAG
 .PHONY: flash
 flash: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).bin
@@ -34,7 +38,8 @@ flash: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).bin
 # Upload the kernel over serial/bootloader
 .PHONY: program
 program: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).hex
-	$(NRFJPROG) --program $< --chiperase
+	$(NRFJPROG) --recover
+	$(NRFJPROG) --log "test.log" --program $< --chiperase
 	$(NRFJPROG) --pinreset
 
 # Convert .bin to .hex

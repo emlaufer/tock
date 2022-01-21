@@ -1,9 +1,9 @@
 //! USB Regulator control
 
-use kernel::common::cells::OptionalCell;
-use kernel::common::registers::interfaces::{Readable, Writeable};
-use kernel::common::registers::{register_bitfields, register_structs, ReadOnly, ReadWrite};
-use kernel::common::StaticRef;
+use kernel::utilities::cells::OptionalCell;
+use kernel::utilities::registers::interfaces::{Readable, Writeable};
+use kernel::utilities::registers::{register_bitfields, register_structs, ReadOnly, ReadWrite};
+use kernel::utilities::StaticRef;
 
 #[allow(dead_code)]
 const USBREG_BASE_NONSECURE: StaticRef<UsbRegRegisters> =

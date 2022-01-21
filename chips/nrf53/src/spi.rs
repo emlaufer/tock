@@ -32,17 +32,18 @@
 use crate::pinmux::Pinmux;
 use core::cell::Cell;
 use core::cmp;
-use kernel::common::cells::{OptionalCell, TakeCell};
-use kernel::common::registers::interfaces::{ReadWriteable, Readable, Writeable};
-use kernel::common::registers::{register_bitfields, register_structs, ReadWrite, WriteOnly};
-use kernel::common::StaticRef;
+use core::ptr;
+use kernel::utilities::cells::{OptionalCell, TakeCell, VolatileCell};
+use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
+use kernel::utilities::registers::{register_bitfields, register_structs, ReadWrite, WriteOnly};
+use kernel::utilities::StaticRef;
 use kernel::hil;
 use kernel::ErrorCode;
 
-pub static mut SPI1_APP: SPI = SPI::new(SECURE_INSTANCES[1]);
-pub static mut SPI0_NET: SPI = SPI::new(SPI0_BASE_NETWORK);
+//pub static mut SPI1_APP: SPI = SPI::new(SECURE_INSTANCES[1]);
+//pub static mut SPI0_NET: SPI = SPI::new(SPI0_BASE_NETWORK);
 
-const SECURE_INSTANCES: [StaticRef<SpiRegisters>; 5] = unsafe {
+pub const SECURE_INSTANCES: [StaticRef<SpiRegisters>; 5] = unsafe {
     [
         StaticRef::new(0x50008000 as *const SpiRegisters),
         StaticRef::new(0x50009000 as *const SpiRegisters),
@@ -68,7 +69,7 @@ const SPI0_BASE_NETWORK: StaticRef<SpiRegisters> =
     unsafe { StaticRef::new(0x41013000 as *const SpiRegisters) };
 
 register_structs! {
-    SpiRegisters {
+    pub SpiRegisters {
         (0x000 => _reserved0),
         /// Start SPI transaction
         (0x010 => spim_task_start: WriteOnly<u32, Task::Register>),
@@ -116,7 +117,7 @@ register_structs! {
         /// Transaction started
         (0x14C => spim_event_started: ReadWrite<u32, Event::Register>),
         (0x150 => _reserved10),
-        /// Publish configuration for SPIM event STOPPED/SPIS event END
+        /// Publish configuration for SpiM event STOPPED/SPIS event END
         (0x184 => publish_endstopped: ReadWrite<u32, DPPIConfig::Register>),
         (0x188 => _reserved11),
         /// Publish configuration for event ENDRX
@@ -149,7 +150,7 @@ register_structs! {
         (0x440 => spis_status: ReadWrite<u32, Status::Register>),
         (0x444 => _reserved20),
         /// Enable SPI
-        (0x500 => enable: ReadWrite<u32, Spi::Register>),
+        (0x500 => enable: ReadWrite<u32, Enable::Register>),
         (0x504 => _reserved21),
         /// Pin select for SCK
         (0x508 => psel_sck: ReadWrite<u32, Psel::Register>),
@@ -164,7 +165,7 @@ register_structs! {
         (0x524 => spim_frequency: ReadWrite<u32, Freq::Register>),
         (0x528 => _reserved23),
         /// Data pointer
-        (0x534 => rxd_ptr: ReadWrite<u32, Pointer::Register>),
+        (0x534 => rxd_ptr: VolatileCell<*const u8>),
         /// Maximum number of bytes in receive buffer
         (0x538 => rxd_maxcnt: ReadWrite<u32, Counter::Register>),
         /// Number of bytes transferred in the last transaction
@@ -172,7 +173,7 @@ register_structs! {
         /// EasyDMA list type
         (0x540 => rxd_list: ReadWrite<u32, List::Register>),
         /// Data pointer
-        (0x544 => txd_ptr: ReadWrite<u32, Pointer::Register>),
+        (0x544 => txd_ptr: VolatileCell<*const u8>),
         /// Number of bytes in transmit buffer
         (0x548 => txd_maxcnt: ReadWrite<u32, Counter::Register>),
         /// Number of bytes transferred in the last transaction
@@ -258,7 +259,7 @@ register_bitfields![u32,
     ],
 
     /// Enable SPI
-    Spi [
+    Enable [
         ENABLE OFFSET(0) NUMBITS(4) [
             Disabled = 0,
             SpisEnabled = 2,
@@ -452,7 +453,7 @@ pub enum SpiRole {
 ///
 /// A `SPI` instance wraps a `registers::spi::SPI` together with
 /// addition data necessary to implement an asynchronous interface.
-pub struct SPI {
+pub struct Spi {
     registers: StaticRef<SpiRegisters>,
     role: Cell<SpiRole>,
     spim_client: OptionalCell<&'static dyn hil::spi::SpiMasterClient>,
@@ -465,9 +466,9 @@ pub struct SPI {
     transfer_len: Cell<usize>,
 }
 
-impl SPI {
-    const fn new(registers: StaticRef<SpiRegisters>) -> SPI {
-        SPI {
+impl Spi {
+    pub const fn new(registers: StaticRef<SpiRegisters>) -> Self {
+        Self {
             registers,
             role: Cell::new(SpiRole::SPIM),
             spim_client: OptionalCell::empty(),
@@ -496,7 +497,7 @@ impl SPI {
             self.spim_client.map(|client| match self.tx_buf.take() {
                 None => (),
                 Some(tx_buf) => {
-                    client.read_write_done(tx_buf, self.rx_buf.take(), self.transfer_len.take())
+                    client.read_write_done(tx_buf, self.rx_buf.take(), self.transfer_len.take(), Ok(()))
                 }
             });
 
@@ -542,6 +543,7 @@ impl SPI {
                     self.tx_buf.take(),
                     self.rx_buf.take(),
                     self.transfer_len.take(),
+                    Ok(()),
                 )
             });
 
@@ -593,8 +595,8 @@ impl SPI {
     /// Enables `SPI` peripheral.
     pub fn enable(&self, role: SpiRole) {
         match role {
-            SpiRole::SPIM => self.registers.enable.write(Spi::ENABLE::SpimEnabled),
-            SpiRole::SPIS => self.registers.enable.write(Spi::ENABLE::SpisEnabled),
+            SpiRole::SPIM => self.registers.enable.write(Enable::ENABLE::SpimEnabled),
+            SpiRole::SPIS => self.registers.enable.write(Enable::ENABLE::SpisEnabled),
         }
 
         self.role.set(role);
@@ -602,14 +604,14 @@ impl SPI {
 
     /// Disables `SPI` peripheral.
     pub fn disable(&self) {
-        self.registers.enable.write(Spi::ENABLE::Disabled);
+        self.registers.enable.write(Enable::ENABLE::Disabled);
     }
 
     pub fn is_enabled(&self) -> bool {
-        !self.registers.enable.matches_all(Spi::ENABLE::Disabled)
+        !self.registers.enable.matches_all(Enable::ENABLE::Disabled)
     }
 
-    fn set_clock(&self, polarity: hil::spi::ClockPolarity) {
+    fn set_polarity(&self, polarity: hil::spi::ClockPolarity) -> Result<(), ErrorCode> {
         debug_assert!(self.initialized.get());
         debug_assert!(self.initialized.get());
         let new_polarity = match polarity {
@@ -617,9 +619,10 @@ impl SPI {
             hil::spi::ClockPolarity::IdleHigh => Config::CPOL::ActiveLow,
         };
         self.registers.config.modify(new_polarity);
+        Ok(())
     }
 
-    fn get_clock(&self) -> hil::spi::ClockPolarity {
+    fn get_polarity(&self) -> hil::spi::ClockPolarity {
         debug_assert!(self.initialized.get());
         match self.registers.config.read(Config::CPOL) {
             0 => hil::spi::ClockPolarity::IdleLow,
@@ -628,13 +631,14 @@ impl SPI {
         }
     }
 
-    fn set_phase(&self, phase: hil::spi::ClockPhase) {
+    fn set_phase(&self, phase: hil::spi::ClockPhase) -> Result<(), ErrorCode> {
         debug_assert!(self.initialized.get());
         let new_phase = match phase {
             hil::spi::ClockPhase::SampleLeading => Config::CPHA::Leading,
             hil::spi::ClockPhase::SampleTrailing => Config::CPHA::Trailing,
         };
         self.registers.config.modify(new_phase);
+        Ok(())
     }
 
     fn get_phase(&self) -> hil::spi::ClockPhase {
@@ -647,16 +651,17 @@ impl SPI {
     }
 }
 
-impl hil::spi::SpiMaster for SPI {
+impl hil::spi::SpiMaster for Spi {
     type ChipSelect = &'static dyn hil::gpio::Pin;
 
     fn set_client(&self, client: &'static dyn hil::spi::SpiMasterClient) {
         self.spim_client.set(client);
     }
 
-    fn init(&self) {
+    fn init(&self) -> Result<(), ErrorCode> {
         self.registers.intenset.write(Interrupt::END::SET);
         self.initialized.set(true);
+        Ok(())
     }
 
     fn is_busy(&self) -> bool {
@@ -668,7 +673,7 @@ impl hil::spi::SpiMaster for SPI {
         tx_buf: &'static mut [u8],
         rx_buf: Option<&'static mut [u8]>,
         len: usize,
-    ) -> Result<(), ErrorCode> {
+    ) -> Result<(), (ErrorCode, &'static mut [u8], Option<&'static mut [u8]>)> {
         debug_assert!(self.initialized.get());
         debug_assert!(!self.busy.get());
         debug_assert!(self.tx_buf.is_none());
@@ -676,32 +681,28 @@ impl hil::spi::SpiMaster for SPI {
 
         // Clear (set to low) chip-select
         if self.chip_select.is_none() {
-            return Err(ErrorCode::NODEVICE);
+            return Err((ErrorCode::NODEVICE, tx_buf, rx_buf));
         }
         self.chip_select.map(|cs| cs.clear());
 
         // Setup transmit data registers
         let tx_len: u32 = cmp::min(len, tx_buf.len()) as u32;
-        self.registers.txd_ptr.set(tx_buf.as_ptr() as u32);
-        self.registers
-            .txd_maxcnt
-            .write(Counter::COUNTER.val(tx_len));
+        self.registers.txd_ptr.set(tx_buf.as_ptr());
+        self.registers.txd_maxcnt.write(Counter::COUNTER.val(tx_len));
         self.tx_buf.replace(tx_buf);
 
         // Setup receive data registers
         match rx_buf {
             None => {
-                self.registers.rxd_ptr.set(0);
+                self.registers.rxd_ptr.set(ptr::null_mut());
                 self.registers.rxd_maxcnt.write(Counter::COUNTER.val(0));
                 self.transfer_len.set(tx_len as usize);
                 self.rx_buf.put(None);
             }
             Some(buf) => {
-                self.registers.rxd_ptr.set(buf.as_mut_ptr() as u32);
+                self.registers.rxd_ptr.set(buf.as_mut_ptr());
                 let rx_len: u32 = cmp::min(len, buf.len()) as u32;
-                self.registers
-                    .rxd_maxcnt
-                    .write(Counter::COUNTER.val(rx_len));
+                self.registers.rxd_maxcnt.write(Counter::COUNTER.val(rx_len));
                 self.transfer_len.set(cmp::min(tx_len, rx_len) as usize);
                 self.rx_buf.put(Some(buf));
             }
@@ -713,36 +714,37 @@ impl hil::spi::SpiMaster for SPI {
         Ok(())
     }
 
-    fn write_byte(&self, _val: u8) {
+    fn write_byte(&self, _val: u8) -> Result<(), ErrorCode> {
         debug_assert!(self.initialized.get());
-        unimplemented!("SPIM: Use `read_write_bytes()` instead.");
+        unimplemented!("SPI: Use `read_write_bytes()` instead.");
     }
 
-    fn read_byte(&self) -> u8 {
+    fn read_byte(&self) -> Result<u8, ErrorCode> {
         debug_assert!(self.initialized.get());
-        unimplemented!("SPIM: Use `read_write_bytes()` instead.");
+        unimplemented!("SPI: Use `read_write_bytes()` instead.");
     }
 
-    fn read_write_byte(&self, _val: u8) -> u8 {
+    fn read_write_byte(&self, _val: u8) -> Result<u8, ErrorCode> {
         debug_assert!(self.initialized.get());
-        unimplemented!("SPIM: Use `read_write_bytes()` instead.");
+        unimplemented!("SPI: Use `read_write_bytes()` instead.");
     }
 
     // Tell the SPI peripheral what to use as a chip select pin.
     // The type of the argument is based on what makes sense for the
     // peripheral when this trait is implemented.
-    fn specify_chip_select(&self, cs: Self::ChipSelect) {
+    fn specify_chip_select(&self, cs: Self::ChipSelect) -> Result<(), ErrorCode> {
         cs.make_output();
         cs.set();
         self.chip_select.set(cs);
+        Ok(())
     }
 
     // Returns the actual rate set
-    fn set_rate(&self, rate: u32) -> u32 {
+    fn set_rate(&self, rate: u32) -> Result<u32, ErrorCode> {
         debug_assert!(self.initialized.get());
         let f = Frequency::from_spi_rate(rate);
         self.registers.spim_frequency.set(f as u32);
-        f.into_spi_rate()
+        Ok(f.into_spi_rate())
     }
 
     fn get_rate(&self) -> u32 {
@@ -755,16 +757,16 @@ impl hil::spi::SpiMaster for SPI {
         f.into_spi_rate()
     }
 
-    fn set_clock(&self, polarity: hil::spi::ClockPolarity) {
-        self.set_clock(polarity);
+    fn set_polarity(&self, polarity: hil::spi::ClockPolarity) -> Result<(), ErrorCode> {
+        self.set_polarity(polarity)
     }
 
-    fn get_clock(&self) -> hil::spi::ClockPolarity {
-        self.get_clock()
+    fn get_polarity(&self) -> hil::spi::ClockPolarity {
+        self.get_polarity()
     }
 
-    fn set_phase(&self, phase: hil::spi::ClockPhase) {
-        self.set_phase(phase);
+    fn set_phase(&self, phase: hil::spi::ClockPhase) -> Result<(), ErrorCode> {
+        self.set_phase(phase)
     }
 
     fn get_phase(&self) -> hil::spi::ClockPhase {
@@ -783,11 +785,12 @@ impl hil::spi::SpiMaster for SPI {
     }
 }
 
-impl hil::spi::SpiSlave for SPI {
-    fn init(&self) {
+impl hil::spi::SpiSlave for Spi {
+    fn init(&self) -> Result<(), ErrorCode> {
         self.registers.intenset.write(Interrupt::ACQUIRED::SET);
         self.registers.shorts.write(Shorts::END_ACQUIRE::SET);
         self.initialized.set(true);
+        Ok(())
     }
 
     fn has_client(&self) -> bool {
@@ -808,20 +811,20 @@ impl hil::spi::SpiSlave for SPI {
         tx_buf: Option<&'static mut [u8]>,
         rx_buf: Option<&'static mut [u8]>,
         len: usize,
-    ) -> Result<(), ErrorCode> {
+    ) -> Result<(), (ErrorCode, Option<&'static mut [u8]>, Option<&'static mut [u8]>)> {
         // Invariant: SPIS semaphore must be held by CPU.
         debug_assert!(self.registers.stat.get() == 1);
 
         // Setup transmit data registers
         match tx_buf {
             None => {
-                self.registers.txd_ptr.set(0);
+                self.registers.txd_ptr.set(ptr::null_mut());
                 self.registers.txd_maxcnt.write(Counter::COUNTER.val(0));
                 self.tx_buf.put(None);
             }
             Some(buf) => {
                 let tx_len: u32 = cmp::min(len, buf.len()) as u32;
-                self.registers.txd_ptr.set(buf.as_ptr() as u32);
+                self.registers.txd_ptr.set(buf.as_ptr());
                 self.registers
                     .txd_maxcnt
                     .write(Counter::COUNTER.val(tx_len));
@@ -832,13 +835,13 @@ impl hil::spi::SpiSlave for SPI {
         // Setup receive data registers
         match rx_buf {
             None => {
-                self.registers.rxd_ptr.set(0);
+                self.registers.rxd_ptr.set(ptr::null_mut());
                 self.registers.rxd_maxcnt.write(Counter::COUNTER.val(0));
                 self.rx_buf.put(None);
             }
             Some(buf) => {
                 let rx_len: u32 = cmp::min(len, buf.len()) as u32;
-                self.registers.rxd_ptr.set(buf.as_mut_ptr() as u32);
+                self.registers.rxd_ptr.set(buf.as_mut_ptr());
                 self.registers
                     .rxd_maxcnt
                     .write(Counter::COUNTER.val(rx_len));
@@ -852,16 +855,16 @@ impl hil::spi::SpiSlave for SPI {
         Ok(())
     }
 
-    fn set_clock(&self, polarity: hil::spi::ClockPolarity) {
-        self.set_clock(polarity);
+    fn set_polarity(&self, polarity: hil::spi::ClockPolarity) -> Result<(), ErrorCode> {
+        self.set_polarity(polarity)
     }
 
-    fn get_clock(&self) -> hil::spi::ClockPolarity {
-        self.get_clock()
+    fn get_polarity(&self) -> hil::spi::ClockPolarity {
+        self.get_polarity()
     }
 
-    fn set_phase(&self, phase: hil::spi::ClockPhase) {
-        self.set_phase(phase);
+    fn set_phase(&self, phase: hil::spi::ClockPhase) -> Result<(), ErrorCode> {
+        self.set_phase(phase)
     }
 
     fn get_phase(&self) -> hil::spi::ClockPhase {
@@ -869,7 +872,7 @@ impl hil::spi::SpiSlave for SPI {
     }
 }
 
-impl hil::gpio::Client for SPI {
+impl hil::gpio::Client for Spi {
     fn fired(&self) {
         self.spis_client.map(|client| {
             client.chip_selected();

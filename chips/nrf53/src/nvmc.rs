@@ -4,21 +4,21 @@
 
 use core::cell::Cell;
 use core::ops::{Index, IndexMut};
-use kernel::common::cells::OptionalCell;
-use kernel::common::cells::TakeCell;
-use kernel::common::cells::VolatileCell;
-use kernel::common::deferred_call::DeferredCall;
-use kernel::common::registers::interfaces::{Readable, Writeable};
-use kernel::common::registers::{
+use kernel::utilities::cells::OptionalCell;
+use kernel::utilities::cells::TakeCell;
+use kernel::utilities::cells::VolatileCell;
+use kernel::deferred_call::DeferredCall;
+use kernel::utilities::registers::interfaces::{Readable, Writeable};
+use kernel::utilities::registers::{
     register_bitfields, register_structs, ReadOnly, ReadWrite, WriteOnly,
 };
-use kernel::common::StaticRef;
+use kernel::utilities::StaticRef;
 use kernel::hil;
 use kernel::ErrorCode;
 
 use crate::deferred_call_tasks::DeferredCallTask;
 
-const NVMC_BASE_SECURE: StaticRef<NvmcRegisters> =
+pub const NVMC_BASE_SECURE: StaticRef<NvmcRegisters> =
     unsafe { StaticRef::new(0x50039000 as *const NvmcRegisters) };
 #[allow(dead_code)]
 const NVMC_BASE_NONSECURE: StaticRef<NvmcRegisters> =
@@ -27,10 +27,10 @@ const NVMC_BASE_NONSECURE: StaticRef<NvmcRegisters> =
 const NVMC_BASE_NETWORK: StaticRef<NvmcRegisters> =
     unsafe { StaticRef::new(0x41080000 as *const NvmcRegisters) };
 
-pub static mut NVMC_APP: Nvmc = Nvmc::new(NVMC_BASE_SECURE);
+//pub static mut NVMC_APP: Nvmc = Nvmc::new(NVMC_BASE_SECURE);
 
 register_structs! {
-    NvmcRegisters {
+    pub NvmcRegisters {
         /// Ready flag
         (0x400 => ready: ReadOnly<u32, Ready::Register>),
         (0x404 => _reserved1),
@@ -238,7 +238,7 @@ pub struct Nvmc {
 }
 
 impl Nvmc {
-    const fn new(registers: StaticRef<NvmcRegisters>) -> Nvmc {
+    pub const fn new(registers: StaticRef<NvmcRegisters>) -> Nvmc {
         Nvmc {
             registers,
             client: OptionalCell::empty(),

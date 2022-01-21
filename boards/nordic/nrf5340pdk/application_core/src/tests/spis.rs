@@ -1,4 +1,4 @@
-use kernel::common::cells::TakeCell;
+use kernel::utilities::cells::TakeCell;
 use kernel::debug;
 use kernel::hil::gpio::{Configure, FloatingState, Interrupt, InterruptEdge, Output};
 use kernel::hil::spi::{SpiSlave, SpiSlaveClient};

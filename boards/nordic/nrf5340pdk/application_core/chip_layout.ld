@@ -8,5 +8,8 @@ MEMORY
 
 MPU_MIN_ALIGN = 8K;
 
-SEC_FLASH_REG_SIZE = 0x8000;
-SEC_FLASH_NSC_SIZE = 0x200;
+SEC_FLASH_REG_SIZE = 0x4000; /* 16 kib */
+/* technically this can change sizes, but for ease of linking we will set this to the max value */
+/* helps linking because it must be placed at the END of a secure region... */
+/* TODO: make this scale based on the nsc size... */
+SEC_FLASH_NSC_SIZE = 0x200; 

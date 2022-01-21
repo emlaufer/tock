@@ -1,17 +1,17 @@
 //! Power management
 
-use kernel::common::cells::OptionalCell;
-use kernel::common::registers::interfaces::{Readable, Writeable};
-use kernel::common::registers::{
+use kernel::utilities::cells::OptionalCell;
+use kernel::utilities::registers::interfaces::{Readable, Writeable};
+use kernel::utilities::registers::{
     register_bitfields, register_structs, ReadOnly, ReadWrite, WriteOnly,
 };
-use kernel::common::StaticRef;
+use kernel::utilities::StaticRef;
 
 // Power management control
 #[allow(dead_code)]
 const POWER_BASE_NONSECURE: StaticRef<PowerRegisters> =
     unsafe { StaticRef::new(0x40005000 as *const PowerRegisters) };
-const POWER_BASE_SECURE: StaticRef<PowerRegisters> =
+pub const POWER_BASE_SECURE: StaticRef<PowerRegisters> =
     unsafe { StaticRef::new(0x50005000 as *const PowerRegisters) };
 const POWER_BASE_NETWORK: StaticRef<PowerRegisters> =
     unsafe { StaticRef::new(0x41005000 as *const PowerRegisters) };
@@ -25,7 +25,7 @@ pub static mut POWER_APP: Power<'static> = Power::new(POWER_BASE_SECURE);
 pub static mut POWER_NET: Power<'static> = Power::new(POWER_BASE_NETWORK);
 
 register_structs! {
-    PowerRegisters {
+    pub PowerRegisters {
         (0x000 => _reserved0),
         /// Enable Constant Latency mode
         (0x078 => task_constlat: WriteOnly<u32, Task::Register>),
@@ -293,7 +293,7 @@ pub trait PowerClient {
 }
 
 impl<'a> Power<'a> {
-    const fn new(registers: StaticRef<PowerRegisters>) -> Self {
+    pub const fn new(registers: StaticRef<PowerRegisters>) -> Self {
         Power {
             registers,
             client: OptionalCell::empty(),

@@ -12,10 +12,11 @@ pub unsafe fn run(
     mux_alarm: &'static MuxAlarm<'static, Rtc>,
     led_pin: gpio::Pin,
     button_pin: gpio::Pin,
+    peripherals: &'static nrf53::chip::Nrf53AppDefaultPeripherals<'static>
 ) {
     let blink = static_init!(
         Blink<VirtualMuxAlarm<'static, Rtc>>,
-        Blink::new(VirtualMuxAlarm::new(mux_alarm), led_pin, button_pin)
+        Blink::new(VirtualMuxAlarm::new(mux_alarm), led_pin, button_pin, peripherals)
     );
 
     blink.alarm.set_alarm_client(blink);
@@ -30,9 +31,9 @@ struct Blink<A: Alarm<'static>> {
 }
 
 impl<A: Alarm<'static>> Blink<A> {
-    fn new(alarm: A, led_pin: gpio::Pin, button_pin: gpio::Pin) -> Blink<A> {
-        let led = unsafe { &gpio::PORT_APP[led_pin] };
-        let button = unsafe { &gpio::PORT_APP[button_pin] };
+    fn new(alarm: A, led_pin: gpio::Pin, button_pin: gpio::Pin, peripherals: &'static nrf53::chip::Nrf53AppDefaultPeripherals<'static>) -> Blink<A> {
+        let led = &peripherals.gpio_port[led_pin];
+        let button = &peripherals.gpio_port[button_pin];
 
         led.make_output();
         button.make_input();

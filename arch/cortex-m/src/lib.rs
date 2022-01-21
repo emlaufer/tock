@@ -211,6 +211,7 @@ pub unsafe extern "C" fn generic_isr_arm_v7m() {
 pub unsafe extern "C" fn unhandled_interrupt() {
     let mut interrupt_number: u32;
 
+
     // IPSR[8:0] holds the currently active interrupt
     asm!(
         "mrs r0, ipsr",

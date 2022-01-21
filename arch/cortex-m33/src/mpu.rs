@@ -4,11 +4,11 @@ use core::cell::Cell;
 use core::cmp;
 use core::fmt;
 use kernel;
-use kernel::common::cells::OptionalCell;
-use kernel::common::registers::interfaces::{Readable, Writeable};
-use kernel::common::registers::{register_bitfields, FieldValue, ReadOnly, ReadWrite};
-use kernel::common::StaticRef;
-use kernel::mpu;
+use kernel::utilities::cells::OptionalCell;
+use kernel::utilities::registers::interfaces::{Readable, Writeable};
+use kernel::utilities::registers::{register_bitfields, FieldValue, ReadOnly, ReadWrite};
+use kernel::utilities::StaticRef;
+use kernel::platform::mpu;
 use kernel::ProcessId;
 
 /// MPU Registers described in section 4.5 of
@@ -332,7 +332,7 @@ impl CortexMRegion {
     }
 }
 
-impl kernel::mpu::MPU for MPU {
+impl mpu::MPU for MPU {
     type MpuConfig = CortexMConfig;
 
     fn clear_mpu(&self) {

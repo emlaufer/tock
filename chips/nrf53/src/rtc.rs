@@ -1,12 +1,12 @@
 //! RTC driver, nRF5X-family
 
 use core::cell::Cell;
-use kernel::common::cells::OptionalCell;
-use kernel::common::registers::interfaces::{Readable, Writeable};
-use kernel::common::registers::{
+use kernel::utilities::cells::OptionalCell;
+use kernel::utilities::registers::interfaces::{Readable, Writeable};
+use kernel::utilities::registers::{
     register_bitfields, register_structs, ReadOnly, ReadWrite, WriteOnly,
 };
-use kernel::common::StaticRef;
+use kernel::utilities::StaticRef;
 use kernel::hil::time::{self, Alarm, Ticks, Time};
 use kernel::ErrorCode;
 
@@ -16,7 +16,7 @@ const NUM_CC: usize = 4;
 #[allow(dead_code)]
 const RTC0_BASE_NONSECURE: StaticRef<RtcRegisters> =
     unsafe { StaticRef::new(0x40014000 as *const RtcRegisters) };
-const RTC0_BASE_SECURE: StaticRef<RtcRegisters> =
+pub const RTC0_BASE_SECURE: StaticRef<RtcRegisters> =
     unsafe { StaticRef::new(0x50014000 as *const RtcRegisters) };
 const RTC0_BASE_NETWORK: StaticRef<RtcRegisters> =
     unsafe { StaticRef::new(0x41011000 as *const RtcRegisters) };
@@ -46,7 +46,7 @@ pub static mut RTC0_NET: Rtc = Rtc {
 };
 
 register_structs! {
-    RtcRegisters {
+    pub RtcRegisters {
         /// Start RTC Counter.
         (0x000 => tasks_start: WriteOnly<u32, Task::Register>),
         /// Stop RTC Counter.
@@ -171,6 +171,15 @@ pub struct Rtc<'a> {
 }
 
 impl<'a> Rtc<'a> {
+    pub const fn new(registers: StaticRef<RtcRegisters>) -> Self {
+        Rtc {
+            registers,
+            overflow_client: OptionalCell::empty(),
+            alarm_client: OptionalCell::empty(),
+            enabled: Cell::new(false),
+        }
+    }
+
     pub fn handle_interrupt(&self) {
         if self.registers.events_ovrflw.is_set(Event::READY) {
             self.registers.events_ovrflw.write(Event::READY::CLEAR);
@@ -196,7 +205,7 @@ impl Time for Rtc<'_> {
 }
 
 impl<'a> time::Counter<'a> for Rtc<'a> {
-    fn set_overflow_client(&'a self, client: &'a dyn time::OverflowClient) {
+    fn set_overflow_client(&self, client: &'a dyn time::OverflowClient) {
         self.overflow_client.set(client);
         self.registers.intenset.write(Inte::OVRFLW::SET);
     }

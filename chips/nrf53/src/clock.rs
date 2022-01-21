@@ -16,18 +16,18 @@
 //! * 32.768 kHz crystal oscillator (LFXO)
 //! * 32.768 kHz synthesized from HFCLK (LFSYNT)
 
-use kernel::common::cells::OptionalCell;
-use kernel::common::registers::interfaces::{Readable, Writeable};
-use kernel::common::registers::{
+use kernel::utilities::cells::OptionalCell;
+use kernel::utilities::registers::interfaces::{Readable, Writeable};
+use kernel::utilities::registers::{
     register_bitfields, register_structs, ReadOnly, ReadWrite, WriteOnly,
 };
-use kernel::common::StaticRef;
+use kernel::utilities::StaticRef;
 
-pub static mut CLOCK_APP: Clock = Clock::new(CLOCK_BASE_SECURE);
-pub static mut CLOCK_NET: Clock = Clock::new(CLOCK_BASE_NETWORK);
+/*pub static mut CLOCK_APP: Clock = Clock::new(CLOCK_BASE_SECURE);
+pub static mut CLOCK_NET: Clock = Clock::new(CLOCK_BASE_NETWORK);*/
 
 register_structs! {
-    ClockRegisters {
+    pub ClockRegisters {
         (0x000 => tasks_hfclkstart: WriteOnly<u32, Control::Register>),
         (0x004 => tasks_hfclkstop: WriteOnly<u32, Control::Register>),
         (0x008 => tasks_lfclkstart: WriteOnly<u32, Control::Register>),
@@ -226,7 +226,7 @@ register_bitfields! [u32,
 #[allow(dead_code)]
 const CLOCK_BASE_NONSECURE: StaticRef<ClockRegisters> =
     unsafe { StaticRef::new(0x40005000 as *const ClockRegisters) };
-const CLOCK_BASE_SECURE: StaticRef<ClockRegisters> =
+pub const CLOCK_BASE_SECURE: StaticRef<ClockRegisters> =
     unsafe { StaticRef::new(0x50005000 as *const ClockRegisters) };
 const CLOCK_BASE_NETWORK: StaticRef<ClockRegisters> =
     unsafe { StaticRef::new(0x41005000 as *const ClockRegisters) };
@@ -278,7 +278,7 @@ pub trait ClockClient {
 
 impl Clock {
     /// Constructor
-    const fn new(registers: StaticRef<ClockRegisters>) -> Clock {
+    pub const fn new(registers: StaticRef<ClockRegisters>) -> Clock {
         Clock {
             registers,
             client: OptionalCell::empty(),
@@ -373,13 +373,14 @@ impl Clock {
     /// Check if the low frequency clock has started
     pub fn low_started(&self) -> bool {
         let regs = &*self.registers;
-        regs.events_lfclkstarted.matches_all(Status::READY::SET)
+        regs.events_lfclkstarted.matches_all(Status::READY.val(1))
     }
 
     /// Read clock source from the low frequency clock
     pub fn low_source(&self) -> LowClockSource {
         let regs = &*self.registers;
         match regs.lfclkstat.read(LfClkStat::SRC) {
+            // TODO: LFULP doesn't exist on 5340dk
             0 => LowClockSource::LFULP,
             1 => LowClockSource::LFRC,
             2 => LowClockSource::LFXO,

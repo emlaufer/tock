@@ -1,18 +1,15 @@
 /// System Protection Unit (SPU) for the nRF53.
 /// NOTE: Quick and dirty first pass at making a driver, needs a lot of work.
 use crate::gpio;
-use kernel::common::registers::interfaces::{ReadWriteable, Readable, Writeable};
-use kernel::common::registers::{register_bitfields, register_structs, ReadOnly, ReadWrite};
-use kernel::common::StaticRef;
 use kernel::debug;
+use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
+use kernel::utilities::registers::{register_bitfields, register_structs, ReadOnly, ReadWrite};
+use kernel::utilities::StaticRef;
 
 const SPU_BASE: StaticRef<SpuRegisters> =
     unsafe { StaticRef::new(0x50003000 as *const SpuRegisters) };
 
-pub static mut SPU: Spu = Spu::new();
-
-/// XXX Errata 19: 32 regions of 32 KiB for early nRF5340-PDK, 64 regions of 16 KiB on corrected chips
-pub const NUM_FLASH_REGIONS: usize = 32;
+pub const NUM_FLASH_REGIONS: usize = 64;
 pub const NUM_RAM_REGIONS: usize = 64;
 const NUM_PERIPHIDS: usize = 256;
 
@@ -84,7 +81,6 @@ register_structs! {
         (0x550 => _reserved9),
         /// Access permissions for flash region n.
         (0x600 => flashregion_perm: [ReadWrite<u32, RegionPerm::Register>; NUM_FLASH_REGIONS]),
-        (0x680 => _reserved10), // XXX: Errata #19
         /// Access permissions for RAM region n.
         (0x700 => ramregion_perm: [ReadWrite<u32, RegionPerm::Register>; NUM_RAM_REGIONS]),
         /// List capabilities and access permisions for the peripheral with ID n.
@@ -329,16 +325,16 @@ pub enum Error {
 
 pub struct Spu {
     registers: StaticRef<SpuRegisters>,
-    allocated_flash_nsc: [bool; 2],
-    allocated_ram_nsc: [bool; 2],
+    allocated_flash_nsc: core::cell::Cell<[bool; 2]>,
+    allocated_ram_nsc: core::cell::Cell<[bool; 2]>,
 }
 
 impl Spu {
-    const fn new() -> Self {
+    pub const fn new() -> Self {
         Spu {
             registers: SPU_BASE,
-            allocated_flash_nsc: [false; 2],
-            allocated_ram_nsc: [false; 2],
+            allocated_flash_nsc: core::cell::Cell::new([false; 2]),
+            allocated_ram_nsc: core::cell::Cell::new([false; 2]),
         }
     }
 
@@ -518,21 +514,21 @@ impl Spu {
 
     /// Add a new NSC region. Returns the NSC region number on success.
     pub fn add_nsc_region(
-        &mut self,
+        &self,
         region_type: RegionType,
         region_num: usize,
         size: usize,
     ) -> Result<usize, Error> {
         let allocated_nsc = match region_type {
-            RegionType::Flash => &mut self.allocated_flash_nsc,
-            RegionType::Ram => &mut self.allocated_ram_nsc,
+            RegionType::Flash => &self.allocated_flash_nsc,
+            RegionType::Ram => &self.allocated_ram_nsc,
         };
 
         // Allocate an NSC region, if available.
         let mut nsc = Err(Error::OutOfRegions);
-        for i in 0..allocated_nsc.len() {
-            if !allocated_nsc[i] {
-                allocated_nsc[i] = true;
+        for i in 0..allocated_nsc.get().len() {
+            if !allocated_nsc.get()[i] {
+                allocated_nsc.get()[i] = true;
                 nsc = Ok(i);
                 break;
             }
@@ -593,15 +589,15 @@ impl Spu {
     }
 
     /// Remove an existing NSC region.
-    pub fn rm_nsc_region(&mut self, region_type: RegionType, nsc_num: usize) {
+    pub fn rm_nsc_region(&self, region_type: RegionType, nsc_num: usize) {
         let allocated_nsc = match region_type {
-            RegionType::Flash => &mut self.allocated_flash_nsc,
-            RegionType::Ram => &mut self.allocated_ram_nsc,
+            RegionType::Flash => &self.allocated_flash_nsc,
+            RegionType::Ram => &self.allocated_ram_nsc,
         };
 
         // Disable NSC region, if allocated.
-        if nsc_num < allocated_nsc.len() && allocated_nsc[nsc_num] {
-            allocated_nsc[nsc_num] = false;
+        if nsc_num < allocated_nsc.get().len() && allocated_nsc.get()[nsc_num] {
+            allocated_nsc.get()[nsc_num] = false;
 
             // XXX: need to find a cleaner way to get these regs.
             let size_reg = match region_type {
@@ -619,6 +615,15 @@ impl Spu {
 
             // Disable the region.
             size_reg.write(Size::SIZE::Disabled);
+        }
+    }
+
+    pub fn periph_test(&self, periph_id: usize) -> bool {
+        let result = self.registers.periphid_perm[periph_id].get();
+        if result & (1 << 31) != 0 {
+            true
+        } else {
+            false
         }
     }
 

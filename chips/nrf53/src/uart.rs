@@ -5,12 +5,12 @@ use crate::pinmux;
 use core;
 use core::cell::Cell;
 use core::cmp::min;
-use kernel::common::cells::OptionalCell;
-use kernel::common::registers::interfaces::{Readable, Writeable};
-use kernel::common::registers::{
+use kernel::utilities::cells::OptionalCell;
+use kernel::utilities::registers::interfaces::{Readable, Writeable};
+use kernel::utilities::registers::{
     register_bitfields, register_structs, ReadOnly, ReadWrite, WriteOnly,
 };
-use kernel::common::StaticRef;
+use kernel::utilities::StaticRef;
 use kernel::hil::uart;
 use kernel::ErrorCode;
 
@@ -22,7 +22,7 @@ static mut BYTE: u8 = 0;
 #[allow(dead_code)]
 const UARTE0_BASE_NONSECURE: StaticRef<UarteRegisters> =
     unsafe { StaticRef::new(0x40008000 as *const UarteRegisters) };
-const UARTE0_BASE_SECURE: StaticRef<UarteRegisters> =
+pub const UARTE0_BASE_SECURE: StaticRef<UarteRegisters> =
     unsafe { StaticRef::new(0x50008000 as *const UarteRegisters) };
 
 #[allow(dead_code)]
@@ -35,12 +35,8 @@ const UARTE1_BASE_SECURE: StaticRef<UarteRegisters> =
 const UARTE0_BASE_NETWORK: StaticRef<UarteRegisters> =
     unsafe { StaticRef::new(0x41013000 as *const UarteRegisters) };
 
-// These should only be accessed by the reset_handler on startup
-pub static mut UARTE0_APP: Uarte = Uarte::new(UARTE0_BASE_SECURE);
-pub static mut UARTE0_NET: Uarte = Uarte::new(UARTE0_BASE_NETWORK);
-
 register_structs! {
-    UarteRegisters {
+    pub UarteRegisters {
         /// Start UART receiver
         (0x000 => task_startrx: WriteOnly<u32, Task::Register>),
         /// Stop UART receiver
@@ -284,11 +280,11 @@ register_bitfields! [u32,
 pub struct Uarte<'a> {
     registers: StaticRef<UarteRegisters>,
     tx_client: OptionalCell<&'a dyn uart::TransmitClient>,
-    tx_buffer: kernel::common::cells::TakeCell<'static, [u8]>,
+    tx_buffer: kernel::utilities::cells::TakeCell<'static, [u8]>,
     tx_len: Cell<usize>,
     tx_remaining_bytes: Cell<usize>,
     rx_client: OptionalCell<&'a dyn uart::ReceiveClient>,
-    rx_buffer: kernel::common::cells::TakeCell<'static, [u8]>,
+    rx_buffer: kernel::utilities::cells::TakeCell<'static, [u8]>,
     rx_remaining_bytes: Cell<usize>,
     rx_abort_in_progress: Cell<bool>,
     offset: Cell<usize>,
@@ -301,15 +297,15 @@ pub struct UARTParams {
 
 impl<'a> Uarte<'a> {
     /// Constructor
-    const fn new(registers: StaticRef<UarteRegisters>) -> Uarte<'a> {
+    pub const fn new(registers: StaticRef<UarteRegisters>) -> Uarte<'a> {
         Uarte {
             registers,
             tx_client: OptionalCell::empty(),
-            tx_buffer: kernel::common::cells::TakeCell::empty(),
+            tx_buffer: kernel::utilities::cells::TakeCell::empty(),
             tx_len: Cell::new(0),
             tx_remaining_bytes: Cell::new(0),
             rx_client: OptionalCell::empty(),
-            rx_buffer: kernel::common::cells::TakeCell::empty(),
+            rx_buffer: kernel::utilities::cells::TakeCell::empty(),
             rx_remaining_bytes: Cell::new(0),
             rx_abort_in_progress: Cell::new(false),
             offset: Cell::new(0),
@@ -385,6 +381,11 @@ impl<'a> Uarte<'a> {
             self.registers.task_stoptx.write(Task::ENABLE::SET);
         }
 
+        self.registers.txd_ptr.set(0);
+        self.registers.txd_maxcnt.write(Counter::COUNTER.val(0));
+        self.registers.rxd_ptr.set(0);
+        self.registers.rxd_maxcnt.write(Counter::COUNTER.val(0));
+
         self.registers.enable.write(Uart::ENABLE::ON);
 
         // Workaround for errata 44
@@ -420,7 +421,7 @@ impl<'a> Uarte<'a> {
 
     /// UART interrupt handler that listens for both tx_end and rx_end events
     #[inline(never)]
-    pub fn handle_interrupt(&mut self) {
+    pub fn handle_interrupt(&self) {
         if self.tx_ready() {
             self.disable_tx_interrupts();
             self.registers.event_endtx.write(Event::READY::CLEAR);
@@ -568,10 +569,11 @@ impl<'a> Uarte<'a> {
 
         self.enable_tx_interrupts();
     }
-}
 
-impl<'a> uart::UartData<'a> for Uarte<'a> {}
-impl<'a> uart::Uart<'a> for Uarte<'a> {}
+    pub fn is_enabled(&self) -> bool {
+        self.registers.enable.matches_all(Uart::ENABLE::ON)
+    }
+}
 
 impl<'a> uart::Transmit<'a> for Uarte<'a> {
     fn set_transmit_client(&self, client: &'a dyn uart::TransmitClient) {

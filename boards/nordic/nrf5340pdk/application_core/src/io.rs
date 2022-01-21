@@ -9,6 +9,7 @@ use nrf53::gpio::Pin;
 
 use crate::CHIP;
 use crate::PROCESSES;
+use crate::PROCESS_PRINTER;
 
 enum Writer {
     WriterUart(/* initialized */ bool),
@@ -41,7 +42,10 @@ impl IoWrite for Writer {
     fn write(&mut self, buf: &[u8]) {
         match self {
             Writer::WriterUart(ref mut initialized) => {
-                let uart = unsafe { &mut nrf53::uart::UARTE0_APP };
+                // Here, we create a second instance of the Uarte struct.
+                // This is okay because we only call this during a panic, and
+                // we will never actually process the interrupts
+                let uart = nrf53::uart::Uarte::new(nrf53::uart::UARTE0_BASE_SECURE);
                 if !*initialized {
                     *initialized = true;
                     let _ = uart.configure(uart::Parameters {
@@ -87,9 +91,11 @@ impl IoWrite for Writer {
 #[panic_handler]
 /// Panic handler
 pub unsafe extern "C" fn panic_fmt(pi: &PanicInfo) -> ! {
-    const LED1_PIN: Pin = Pin::P0_28;
-    let led = &mut led::LedLow::new(&nrf53::gpio::PORT_APP[LED1_PIN]);
+    const LED2_PIN: Pin = Pin::P0_28;
+    let led_kernel_pin = &nrf53::gpio::GPIOPin::new(LED2_PIN, nrf53::gpio::GPIO_BASE_ADDRESS_SECURE, nrf53::gpio::GPIOTE0_BASE);
+    let led = &mut led::LedLow::new(led_kernel_pin);
     let writer = &mut WRITER;
+    // TODO: process_printer
     debug::panic(
         &mut [led],
         writer,
@@ -97,5 +103,6 @@ pub unsafe extern "C" fn panic_fmt(pi: &PanicInfo) -> ! {
         &cortexm33::support::nop,
         &PROCESSES,
         &CHIP,
+        &PROCESS_PRINTER
     )
 }

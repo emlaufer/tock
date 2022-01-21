@@ -1,6 +1,6 @@
 use capsules::virtual_spi::VirtualSpiMasterDevice;
 use core::cell::Cell;
-use kernel::common::cells::TakeCell;
+use kernel::utilities::cells::TakeCell;
 use kernel::component::Component;
 use kernel::debug;
 use kernel::hil::gpio::{Client, Configure, Interrupt, InterruptEdge, Output};
