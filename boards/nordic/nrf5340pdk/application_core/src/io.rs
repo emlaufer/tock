@@ -55,6 +55,14 @@ impl IoWrite for Writer {
                         hw_flow_control: false,
                         width: uart::Width::Eight,
                     });
+                    /*unsafe {
+                    uart.initialize(
+                        nrf53::pinmux::Pinmux::new(Pin::P0_20 as u32),
+                        nrf53::pinmux::Pinmux::new(Pin::P0_22 as u32),
+                        None,
+                        None,
+                    );
+                    }*/
                 }
                 for &c in buf {
                     unsafe {
@@ -95,7 +103,6 @@ pub unsafe extern "C" fn panic_fmt(pi: &PanicInfo) -> ! {
     let led_kernel_pin = &nrf53::gpio::GPIOPin::new(LED2_PIN, nrf53::gpio::GPIO_BASE_ADDRESS_SECURE, nrf53::gpio::GPIOTE0_BASE);
     let led = &mut led::LedLow::new(led_kernel_pin);
     let writer = &mut WRITER;
-    // TODO: process_printer
     debug::panic(
         &mut [led],
         writer,

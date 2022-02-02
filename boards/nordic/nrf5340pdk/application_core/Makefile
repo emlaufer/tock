@@ -35,12 +35,22 @@ install: flash
 flash: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).bin
 	$(TOCKLOADER) $(TOCKLOADER_GENERAL_FLAGS) flash --address $(KERNEL_ADDRESS) $(TOCKLOADER_JTAG_FLAGS) $<
 
+# nrfjprog --recover screws up normal reset and debugging...use JLink reset instead
+.PHONY: recover
+recover:
+	 echo "r" | JLinkExe -device nRF5340_xxAA_APP -if swd -speed 1000
+
 # Upload the kernel over serial/bootloader
 .PHONY: program
 program: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).hex
-	$(NRFJPROG) --recover
-	$(NRFJPROG) --log "test.log" --program $< --chiperase
-	$(NRFJPROG) --pinreset
+	#$(NRFJPROG) --recover
+	$(NRFJPROG) --program $< --chiperase
+	$(NRFJPROG) --reset
+
+# upload the kernel over jlink, halted for debugging
+.PHONY: jlink
+jlink:
+	JLinkExe -device nRF5340_xxAA_APP -if swd -speed 1000
 
 # Convert .bin to .hex
 $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).hex: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).elf

@@ -27,7 +27,6 @@ static SEC_PERMS: u32 = spu::PERM_SECURE | spu::PERM_READ | spu::PERM_WRITE | sp
 static NS_PERMS: u32 = spu::PERM_READ | spu::PERM_WRITE | spu::PERM_EXECUTE;
 
 #[inline(never)]
-#[link_section = ".secure.text"]
 /// Set up TrustZone/SPU, allocating secure and non-secure regions.
 ///
 /// Mark as CMSE nonsecure entry to clear registers before making BXNE back to
@@ -48,6 +47,15 @@ pub unsafe extern "C" fn setup(sau: &cortexm33::sau::SAU, spu: &nrf53::spu::Spu)
     let nsc_addr = (&_snsc as *const u8) as usize;
     let nsc_size = (&SEC_FLASH_NSC_SIZE as *const u8) as usize;
 
+    // set the GPIO as ns accessible
+    let result = spu.set_periph_sec(nrf53::app_peripheral_ids::GPIO, false);
+    assert!(result.is_ok());
+
+    // set all gpio as ns accessible for now...
+    for i in 0..nrf53::gpio::NUM_PINS {
+        spu.set_gpio_sec(nrf53::gpio::Pin::from_usize(i).unwrap(), false);
+    }
+
     // Configure secure region in flash.
     // FIXME: incorrect flash regions, need to figure out how to make sure that secure code is placed
     // within secure region boundaries in the final image. May require breaking out secure code
@@ -55,9 +63,10 @@ pub unsafe extern "C" fn setup(sau: &cortexm33::sau::SAU, spu: &nrf53::spu::Spu)
     for i in 0..spu::NUM_FLASH_REGIONS {
         let reg_addr = i * sec_reg_size;
         let perms = if reg_addr >= sec_start && reg_addr < sec_end {
-            SEC_PERMS
-        } else {
+            // TODO: flip these later
             NS_PERMS
+        } else {
+            SEC_PERMS
         };
 
         let result = spu.set_flash_region_perms(i, perms);
@@ -68,8 +77,8 @@ pub unsafe extern "C" fn setup(sau: &cortexm33::sau::SAU, spu: &nrf53::spu::Spu)
     // add the nsc region
     // currently it is just defined within the linker script as 0x200 size
     // in the last secure region
-    let result = spu.add_nsc_region(spu::RegionType::Flash, nsc_addr / sec_reg_size, nsc_size);
-    assert!(result.is_ok());
+    //let result = spu.add_nsc_region(spu::RegionType::Flash, nsc_addr / sec_reg_size, nsc_size);
+    //assert!(result.is_ok());
 
     // TODO: use tt instr to check attrs
     //asm!("tt {}, {}", out(reg) output, in(reg) main_addr);
@@ -98,23 +107,12 @@ pub unsafe extern "C" fn setup(sau: &cortexm33::sau::SAU, spu: &nrf53::spu::Spu)
         //assert!(SPU.get_ram_region_perms(i).unwrap() == perms);
     }
 
-    // set the GPIO as ns accessible
-    let result = spu.set_periph_sec(nrf53::app_peripheral_ids::GPIO, false);
-    //assert!(result.is_ok());
-    //spu.set_gpio_insec_test();
-
-    // set all gpio as ns accessible for now...
-    for i in 0..nrf53::gpio::NUM_PINS {
-        spu.set_gpio_sec(nrf53::gpio::Pin::from_usize(i).unwrap(), false);
-    }
-
     spu.commit();
 }
 
 // TODO: rewrite verify function using tt instruction
 /*#[inline(never)]
 //#[cmse_nonsecure_entry]
-#[link_section = ".secure.text"]
 /// Verify that TrustZone was setup properly.
 pub unsafe extern "C" fn verify() -> bool {
     let mut success = true;
@@ -170,28 +168,3 @@ pub unsafe extern "C" fn verify() -> bool {
 
     success
 }*/
-
-// Test NSC function that just adds 2 to a number.
-extern "C" {
-    pub fn plus_two(x: u32) -> u32;
-}
-
-// Secure gateway trampoline, this is what you should call from non-secure code.
-global_asm!(
-    r#"
-.section .secure.nsc, "ax"
-.global plus_two
-plus_two:
-    sg
-    b.w _nsc_plus_two
-"#
-);
-
-#[no_mangle]
-#[inline(never)]
-#[cmse_nonsecure_entry]
-#[link_section = ".secure.text"]
-// Actual function, don't call this directly.
-pub unsafe extern "C" fn _nsc_plus_two(x: u32) -> u32 {
-    x + 2
-}

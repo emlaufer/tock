@@ -62,7 +62,7 @@
 // Disable this attribute when documenting, as a workaround for
 // https://github.com/rust-lang/rust/issues/62184.
 #![cfg_attr(not(doc), no_main)]
-#![feature(asm)]
+#![feature(asm, asm_sym)]
 #![feature(cmse_nonsecure_entry)]
 #![feature(abi_c_cmse_nonsecure_call)]
 #![feature(global_asm)]
@@ -141,7 +141,12 @@ static mut PROCESS_PRINTER: Option<&'static kernel::process::ProcessPrinterText>
 /// Dummy buffer that causes the linker to reserve enough space for the stack.
 #[no_mangle]
 #[link_section = ".stack_buffer"]
-pub static mut STACK_MEMORY: [u8; 0x1000] = [0; 0x1000];
+pub static mut STACK_MEMORY: [u8; 0x800] = [0; 0x800];
+
+/// Dummy buffer that causes the linker to reserve enough space for the stack.
+#[no_mangle]
+#[link_section = ".ns_stack_buffer"]
+pub static mut NS_STACK_MEMORY: [u8; 0x800] = [0; 0x800];
 
 /// Supported drivers by the platform
 pub struct Platform {
@@ -232,14 +237,16 @@ unsafe fn get_peripherals() -> &'static mut Nrf53AppDefaultPeripherals<'static> 
 }
 
 // Sample call to secure function from non-secure code
+#[link_section = ".secure.text"]
 #[inline(never)]
 fn test_nonsecure() {
     unsafe {
         core::ptr::write_volatile(0x40842518 as *mut u32, 1 << 29);
         core::ptr::write_volatile(0x4084250C as *mut u32, 1 << 29);
 
+        loop {}
         // try calling a secure function
-        test_secure_gate();
+        //test_secure_gate();
     }
 }
 
@@ -260,7 +267,6 @@ test_secure_gate:
 );
 
 /// test sec
-#[link_section = ".secure.text"]
 #[cmse_nonsecure_entry]
 #[no_mangle]
 #[inline(never)]
@@ -271,8 +277,12 @@ pub unsafe extern "C" fn test_secure_impl() {
     }
 }
 
+extern "C" {
+    static _ns_estack: u32;
+    static _ns_sstack: u32;
+}
+
 /// Main function called after RAM initialized.
-#[link_section = ".secure.text"]
 #[no_mangle]
 pub unsafe fn main() {
     // Loads relocations and clears BSS
@@ -369,12 +379,7 @@ pub unsafe fn main() {
     CHIP = Some(chip);
 
     // move to non-secure world...TODO: refactor how this works
-    /*trustzone::setup(&chip.sau, &nrf53_app_peripherals.spu);
-
-    let one = 1;
-    asm!("bics {0}, {1}
-          blxns {0}", in(reg) test_nonsecure, in(reg) one);
-    loop {}*/
+    trustzone::setup(&chip.sau, &nrf53_app_peripherals.spu);
 
     // Create capabilities that the board needs to call certain protected kernel
     // functions.
@@ -458,6 +463,19 @@ pub unsafe fn main() {
     // Create the debugger object that handles calls to `debug!()`.
     components::debug_writer::DebugWriterComponent::new(uart_mux).finalize(());
 
+        //unsafe {core::ptr::write_volatile(0x50842518 as *mut u32, 1 << 30);
+        //core::ptr::write_volatile(0x5084250C as *mut u32, 1 << 30);}
+
+    //asm!("udf 100");
+    // setup ns stack
+    asm!("ldr {tmp}, ={symbol}
+          msr MSP_NS, {tmp}",
+           tmp = out(reg) _, symbol = sym _ns_estack);
+    let one = 1;
+    asm!("bics {0}, {1}
+          bxns {0}", in(reg) test_nonsecure, in(reg) one);
+    loop {}
+
     // Start all of the clocks. Low power operation will require a better
     // approach than this.
     nrf53_app_peripherals.clock.low_stop();
@@ -498,7 +516,6 @@ pub unsafe fn main() {
 
     debug!("Initialization complete. Entering main loop\r");
 
-    tests::blink::run(mux_alarm, LED2_PIN, BUTTON2_PIN, nrf53_app_peripherals);
 
     /// These symbols are defined in the linker script.
     extern "C" {
@@ -532,5 +549,6 @@ pub unsafe fn main() {
         debug!("{:?}", err);
     });
 
+    //asm!("udf 100");
     board_kernel.kernel_loop(&platform, chip, Some(&platform.ipc), &main_loop_capability);
 }
