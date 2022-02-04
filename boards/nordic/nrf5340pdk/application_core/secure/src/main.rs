@@ -75,7 +75,7 @@ use kernel::hil::time::Counter;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::scheduler::round_robin::RoundRobinSched;
 #[allow(unused_imports)]
-use kernel::{capabilities, create_capability, debug, debug_gpio, debug_verbose, static_init};
+use kernel::{capabilities, create_capability, debug, debug_flush_queue, debug_gpio, debug_verbose, static_init};
 use nrf53::chip::Nrf53AppDefaultPeripherals;
 use nrf53::gpio::Pin;
 
@@ -237,7 +237,7 @@ unsafe fn get_peripherals() -> &'static mut Nrf53AppDefaultPeripherals<'static> 
 }
 
 // Sample call to secure function from non-secure code
-#[link_section = ".secure.text"]
+/*#[link_section = ".secure.text"]
 #[inline(never)]
 fn test_nonsecure() {
     unsafe {
@@ -248,9 +248,9 @@ fn test_nonsecure() {
         // try calling a secure function
         //test_secure_gate();
     }
-}
+}*/
 
-extern "C" {
+/*extern "C" {
     /// hi
     pub fn test_secure_gate();
 }
@@ -275,11 +275,39 @@ pub unsafe extern "C" fn test_secure_impl() {
         core::ptr::write_volatile(0x50842518 as *mut u32, 1 << 30);
         core::ptr::write_volatile(0x5084250C as *mut u32, 1 << 30);
     }
-}
+}*/
 
 extern "C" {
     static _ns_estack: u32;
     static _ns_sstack: u32;
+}
+
+/*#[link(name = "nrf5340pdk_app_nonsecure")]
+extern "C" {
+    fn test_nonsecure();
+}*/
+
+/*#[no_mangle]
+#[inline(never)]
+/// HI
+pub fn jump_to_ns() {
+    unsafe {
+    asm!("ldr {tmp}, ={symbol}
+          msr MSP_NS, {tmp}",
+           tmp = out(reg) _, symbol = sym _ns_estack);
+    let one = 1;
+    asm!("bics {0}, {1}
+          bxns {0}", in(reg) test_nonsecure, in(reg) one);
+    }
+    loop {}
+}*/
+macro_rules! led1 {
+    () => {
+        unsafe {
+            core::ptr::write_volatile(0x50842518 as *mut u32, 1 << 28);
+            core::ptr::write_volatile(0x5084250C as *mut u32, 1 << 28);
+        }
+    };
 }
 
 /// Main function called after RAM initialized.
@@ -378,9 +406,6 @@ pub unsafe fn main() {
     );
     CHIP = Some(chip);
 
-    // move to non-secure world...TODO: refactor how this works
-    trustzone::setup(&chip.sau, &nrf53_app_peripherals.spu);
-
     // Create capabilities that the board needs to call certain protected kernel
     // functions.
     let process_management_capability =
@@ -463,92 +488,113 @@ pub unsafe fn main() {
     // Create the debugger object that handles calls to `debug!()`.
     components::debug_writer::DebugWriterComponent::new(uart_mux).finalize(());
 
-        //unsafe {core::ptr::write_volatile(0x50842518 as *mut u32, 1 << 30);
-        //core::ptr::write_volatile(0x5084250C as *mut u32, 1 << 30);}
-
-    //asm!("udf 100");
-    // setup ns stack
-    asm!("ldr {tmp}, ={symbol}
-          msr MSP_NS, {tmp}",
-           tmp = out(reg) _, symbol = sym _ns_estack);
-    let one = 1;
-    asm!("bics {0}, {1}
-          bxns {0}", in(reg) test_nonsecure, in(reg) one);
-    loop {}
-
-    // Start all of the clocks. Low power operation will require a better
-    // approach than this.
-    nrf53_app_peripherals.clock.low_stop();
-    nrf53_app_peripherals.clock.high_stop();
-
-    // TODO: LFXO requires specific GPIO/oscillator setup....
-    nrf53_app_peripherals
-        .clock
-        .low_set_source(nrf53::clock::LowClockSource::LFRC);
-    nrf53_app_peripherals.clock.low_start();
-    nrf53_app_peripherals
-        .clock
-        .high_set_source(nrf53::clock::HighClockSource::HFXO);
-    nrf53_app_peripherals.clock.high_start();
-    while !nrf53_app_peripherals.clock.low_started() {}
-    while !nrf53_app_peripherals.clock.high_started() {}
-
-    let scheduler = components::sched::round_robin::RoundRobinComponent::new(&PROCESSES)
-        .finalize(components::rr_component_helper!(NUM_PROCS));
-
-    let platform = Platform {
-        alarm,
-        button,
-        pconsole,
-        console,
-        led,
-        gpio,
-        ipc: kernel::ipc::IPC::new(
-            board_kernel,
-            kernel::ipc::DRIVER_NUM,
-            &memory_allocation_capability,
-        ),
-        scheduler,
-        systick: cortexm33::systick::SysTick::new_with_calibration(64000000),
-    };
-
-    let _ = platform.pconsole.start();
-
-    debug!("Initialization complete. Entering main loop\r");
-
+    /* TODO: move above probs */
+    // move to non-secure world...TODO: refactor how this works
+    trustzone::setup(&chip.sau, &nrf53_app_peripherals.spu);
 
     /// These symbols are defined in the linker script.
     extern "C" {
-        /// Beginning of the ROM region containing app images.
-        static _sapps: u8;
-        /// End of the ROM region containing app images.
-        static _eapps: u8;
-        /// Beginning of the RAM region for app memory.
-        static mut _sappmem: u8;
-        /// End of the RAM region for app memory.
-        static _eappmem: u8;
+        /// Beginning of the ROM region containing the non-secure kernel.
+        static _sns_flash: u8;
+        /// End of the ROM region containing the non-secure kernel.
+        static _ens_flash: u8;
     }
 
-    kernel::process::load_processes(
-        board_kernel,
-        chip,
-        core::slice::from_raw_parts(
-            &_sapps as *const u8,
-            &_eapps as *const u8 as usize - &_sapps as *const u8 as usize,
-        ),
-        core::slice::from_raw_parts_mut(
-            &mut _sappmem as *mut u8,
-            &_eappmem as *const u8 as usize - &_sappmem as *const u8 as usize,
-        ),
-        &mut PROCESSES,
-        &FAULT_RESPONSE,
-        &process_management_capability,
-    )
-    .unwrap_or_else(|err| {
-        debug!("Error loading processes!");
-        debug!("{:?}", err);
-    });
+    let ns_vector_table = core::slice::from_raw_parts((&_sns_flash as *const u8) as *const usize, 2);
+    let ns_estack = ns_vector_table[0];
+    let ns_start = ns_vector_table[1];
 
-    //asm!("udf 100");
-    board_kernel.kernel_loop(&platform, chip, Some(&platform.ipc), &main_loop_capability);
+    // TODO: fix debug writer...wont flush`
+    //panic!("Got addresses: {:x} {:x}", sns_stack, sns_start);
+    //loop {};
+
+    asm!("msr MSP_NS, {}",
+           in(reg) ns_estack);
+    let one = 1;
+    asm!("bics {0}, {1}
+          bxns {0}", in(reg) ns_start, in(reg) one);
+    loop {}
+
+
+    //    //unsafe {core::ptr::write_volatile(0x50842518 as *mut u32, 1 << 30);
+    //    //core::ptr::write_volatile(0x5084250C as *mut u32, 1 << 30);}
+    ////asm!("udf 100");
+    ////jump_to_ns();
+
+    //// setup ns stack
+    //// Start all of the clocks. Low power operation will require a better
+    //// approach than this.
+    //nrf53_app_peripherals.clock.low_stop();
+    //nrf53_app_peripherals.clock.high_stop();
+
+    //// TODO: LFXO requires specific GPIO/oscillator setup....
+    //nrf53_app_peripherals
+    //    .clock
+    //    .low_set_source(nrf53::clock::LowClockSource::LFRC);
+    //nrf53_app_peripherals.clock.low_start();
+    //nrf53_app_peripherals
+    //    .clock
+    //    .high_set_source(nrf53::clock::HighClockSource::HFXO);
+    //nrf53_app_peripherals.clock.high_start();
+    //while !nrf53_app_peripherals.clock.low_started() {}
+    //while !nrf53_app_peripherals.clock.high_started() {}
+
+    //let scheduler = components::sched::round_robin::RoundRobinComponent::new(&PROCESSES)
+    //    .finalize(components::rr_component_helper!(NUM_PROCS));
+
+    //let platform = Platform {
+    //    alarm,
+    //    button,
+    //    pconsole,
+    //    console,
+    //    led,
+    //    gpio,
+    //    ipc: kernel::ipc::IPC::new(
+    //        board_kernel,
+    //        kernel::ipc::DRIVER_NUM,
+    //        &memory_allocation_capability,
+    //    ),
+    //    scheduler,
+    //    systick: cortexm33::systick::SysTick::new_with_calibration(64000000),
+    //};
+
+    //let _ = platform.pconsole.start();
+
+    //debug!("Initialization complete. Entering main loop\r");
+
+
+    ///// These symbols are defined in the linker script.
+    //extern "C" {
+    //    /// Beginning of the ROM region containing app images.
+    //    static _sapps: u8;
+    //    /// End of the ROM region containing app images.
+    //    static _eapps: u8;
+    //    /// Beginning of the RAM region for app memory.
+    //    static mut _sappmem: u8;
+    //    /// End of the RAM region for app memory.
+    //    static _eappmem: u8;
+    //}
+
+    //kernel::process::load_processes(
+    //    board_kernel,
+    //    chip,
+    //    core::slice::from_raw_parts(
+    //        &_sapps as *const u8,
+    //        &_eapps as *const u8 as usize - &_sapps as *const u8 as usize,
+    //    ),
+    //    core::slice::from_raw_parts_mut(
+    //        &mut _sappmem as *mut u8,
+    //        &_eappmem as *const u8 as usize - &_sappmem as *const u8 as usize,
+    //    ),
+    //    &mut PROCESSES,
+    //    &FAULT_RESPONSE,
+    //    &process_management_capability,
+    //)
+    //.unwrap_or_else(|err| {
+    //    debug!("Error loading processes!");
+    //    debug!("{:?}", err);
+    //});
+
+    ////asm!("udf 100");
+    //board_kernel.kernel_loop(&platform, chip, Some(&platform.ipc), &main_loop_capability);
 }

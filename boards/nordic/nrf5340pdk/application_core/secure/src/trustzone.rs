@@ -15,9 +15,9 @@ pub unsafe fn print_pc() {
 }
 
 extern "C" {
-    static _ssecure: u8;
-    static _esecure: u8;
-    static _snsc: u8;
+    static _ssecure_flash: u8;
+    static _esecure_flash: u8;
+    //static _snsc: u8;
     static SEC_FLASH_REG_SIZE: u8;
     static SEC_FLASH_NSC_SIZE: u8;
 }
@@ -26,6 +26,7 @@ extern "C" {
 static SEC_PERMS: u32 = spu::PERM_SECURE | spu::PERM_READ | spu::PERM_WRITE | spu::PERM_EXECUTE;
 static NS_PERMS: u32 = spu::PERM_READ | spu::PERM_WRITE | spu::PERM_EXECUTE;
 
+#[no_mangle]
 #[inline(never)]
 /// Set up TrustZone/SPU, allocating secure and non-secure regions.
 ///
@@ -41,11 +42,11 @@ pub unsafe extern "C" fn setup(sau: &cortexm33::sau::SAU, spu: &nrf53::spu::Spu)
     assert!(success);
 
     // Get address and size of secure region from linker symbols.
-    let sec_start = (&_ssecure as *const u8) as usize;
-    let sec_end = (&_esecure as *const u8) as usize;
+    let sec_start = (&_ssecure_flash as *const u8) as usize;
+    let sec_end = (&_esecure_flash as *const u8) as usize;
     let sec_reg_size = (&SEC_FLASH_REG_SIZE as *const u8) as usize;
-    let nsc_addr = (&_snsc as *const u8) as usize;
-    let nsc_size = (&SEC_FLASH_NSC_SIZE as *const u8) as usize;
+    //let nsc_addr = (&_snsc as *const u8) as usize;
+    //let nsc_size = (&SEC_FLASH_NSC_SIZE as *const u8) as usize;
 
     // set the GPIO as ns accessible
     let result = spu.set_periph_sec(nrf53::app_peripheral_ids::GPIO, false);
@@ -63,10 +64,9 @@ pub unsafe extern "C" fn setup(sau: &cortexm33::sau::SAU, spu: &nrf53::spu::Spu)
     for i in 0..spu::NUM_FLASH_REGIONS {
         let reg_addr = i * sec_reg_size;
         let perms = if reg_addr >= sec_start && reg_addr < sec_end {
-            // TODO: flip these later
-            NS_PERMS
-        } else {
             SEC_PERMS
+        } else {
+            NS_PERMS
         };
 
         let result = spu.set_flash_region_perms(i, perms);
@@ -88,7 +88,7 @@ pub unsafe extern "C" fn setup(sau: &cortexm33::sau::SAU, spu: &nrf53::spu::Spu)
     let verify_region = verify_addr / sec_reg_size;
     assert!(SPU.get_flash_region_perms(verify_region).unwrap() == SEC_PERMS);*/
     // Configure corresponding secure region in RAM.
-    for i in 0..spu::NUM_RAM_REGIONS {
+    /*for i in 0..spu::NUM_RAM_REGIONS {
         // Secure RAM regions are 8kib
         let reg_addr = i * (sec_reg_size / 2);
         // TODO: this is just wrong...
@@ -105,7 +105,7 @@ pub unsafe extern "C" fn setup(sau: &cortexm33::sau::SAU, spu: &nrf53::spu::Spu)
         let result = spu.set_ram_region_perms(i, perms);
         //assert!(result.is_ok());
         //assert!(SPU.get_ram_region_perms(i).unwrap() == perms);
-    }
+    }*/
 
     spu.commit();
 }

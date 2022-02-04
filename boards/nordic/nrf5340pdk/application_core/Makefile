@@ -1,57 +1,24 @@
-# Makefile for building the tock kernel for the nRF development kit
 
 TARGET=thumbv8m.main-none-eabi
 PLATFORM=nrf5340pdk-app
 
-RUSTC_FLAGS ?= \
-  -C link-arg=-Tlayout.ld \
-  -C linker=rust-lld \
-  -C linker-flavor=ld.lld \
-  -C relocation-model=dynamic-no-pic \
-  -C link-arg=-zmax-page-size=512 \
-  -C link-arg=-icf=all \
+# TODO make this more general...
+SECURE_HEX=../../../../target/$(TARGET)/release/$(PLATFORM)-secure.hex
+NONSECURE_HEX=../../../../target/$(TARGET)/release/$(PLATFORM)-nonsecure.hex
 
-include ../../../Makefile.common
-
-TOCKLOADER=tockloader
 NRFJPROG=nrfjprog
 
-# Where in flash to load the kernel with `tockloader`
-KERNEL_ADDRESS=0x00000
-
-# Upload programs over uart with tockloader
-ifdef PORT
-  TOCKLOADER_GENERAL_FLAGS += --port $(PORT)
-endif
-
-TOCKLOADER_JTAG_FLAGS = --jlink --board nrf5340dk
-
-# Default target for installing the kernel.
-.PHONY: install
-install: flash
-
-# Upload the kernel over JTAG
-.PHONY: flash
-flash: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).bin
-	$(TOCKLOADER) $(TOCKLOADER_GENERAL_FLAGS) flash --address $(KERNEL_ADDRESS) $(TOCKLOADER_JTAG_FLAGS) $<
+# Upload the kernel over serial/bootloader
+.PHONY: program
+program: 
+	make -C nonsecure hex
+	make -C secure hex
+	#$(NRFJPROG) --recover
+	$(NRFJPROG) --program $(SECURE_HEX) --chiperase
+	$(NRFJPROG) --program $(NONSECURE_HEX)
+	$(NRFJPROG) --reset
 
 # nrfjprog --recover screws up normal reset and debugging...use JLink reset instead
 .PHONY: recover
 recover:
 	 echo "r" | JLinkExe -device nRF5340_xxAA_APP -if swd -speed 1000
-
-# Upload the kernel over serial/bootloader
-.PHONY: program
-program: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).hex
-	#$(NRFJPROG) --recover
-	$(NRFJPROG) --program $< --chiperase
-	$(NRFJPROG) --reset
-
-# upload the kernel over jlink, halted for debugging
-.PHONY: jlink
-jlink:
-	JLinkExe -device nRF5340_xxAA_APP -if swd -speed 1000
-
-# Convert .bin to .hex
-$(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).hex: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).elf
-	$(OBJCOPY) $< -O ihex $@

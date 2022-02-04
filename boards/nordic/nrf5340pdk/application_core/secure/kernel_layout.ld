@@ -69,41 +69,17 @@ SECTIONS
 
          . = ALIGN(8);
          _estack = .;
-    } > ram
+    } > sram
 
-   .ns_stack (NOLOAD) :
-    {
-        /* Kernel stack.
-         *
-         * Tock places the kernel stack at the bottom of SRAM so that the
-         * kernel will trigger memory fault if it exceeds its stack depth,
-         * rather than silently overwriting valuable data.
-         */
-        . = ALIGN(8);
-         _ns_sstack = .;
-
-         /* For GNU LD, we can just advance the location pointer (".") here to
-          * reserve space for the stack. That, however, doesn't seem to work
-          * for LLVM LLD. The resulting ELF has a stack section that shows the
-          * correct size, but the next section (in our case .relocate) is not
-          * moved down as well, instead it sits at the same address as .stack.
-          * To work around this, we declare a dummy buffer and then insert it
-          * here in the .stack section. This sets the stack size correctly and
-          * places the .relocate section at the correct address. */
-         KEEP(*(.ns_stack_buffer))
-         /*. = . + 0x1000;*/  /*This is the original method. */
-
-         . = ALIGN(8);
-         _ns_estack = .;
-    } > ram
-
+    /* TODO: I put a lot of these things in srom just to make it simple */
 
     /* STATIC ELEMENTS FOR TOCK KERNEL */
     .text :
     {
         . = ALIGN(4);
         _textstart = .;         /* Symbol expected by some MS build toolchains */
-        _stext = .;         /* First of standard s,e (start/end) pair */
+        _stext = .;             /* First of standard s,e (start/end) pair */
+        _ssecure_flash = .;     /* Symbol to track start of secure rom */
 
         /* Place vector table at the beginning of ROM.
          *
@@ -199,7 +175,29 @@ SECTIONS
         KEEP (*(SORT(.dtors.*)))
         KEEP (*crtend.o(.dtors))
         /* End constructor/destructor */
-    } > rom
+    } > srom
+
+    /* Secure flash region for Arm TrustZone.
+     *
+     * Must be composed of a number of fixed-size TrustZone regions with an
+     * optional NSC (Non-Secure Callable) region at the end.
+     */
+    /*.secure ALIGN(SEC_FLASH_REG_SIZE) :
+    {
+      _ssecure = .;
+      KEEP(*(.secure.text));
+      KEEP(*libnrf5340pdk_app_nonsecure.a:*(.text .text.*));
+
+      /* NSC subregion goes at the end of the secure region. */
+      /*. = ALIGN(SEC_FLASH_REG_SIZE) - SEC_FLASH_NSC_SIZE;
+      _snsc = .;
+      KEEP(*(.secure.nsc));
+
+      . = ALIGN(SEC_FLASH_REG_SIZE);
+      _ensc = .;*/
+      /*_esecure = .;
+    } > rom*/
+
 
 
     /* ARM Exception support
@@ -216,7 +214,7 @@ SECTIONS
     {
       /* (C++) Index entries for section unwinding */
       *(.ARM.exidx* .gnu.linkonce.armexidx.*)
-    } > rom
+    } > srom
     PROVIDE_HIDDEN (__exidx_end = .);
 
     /* Region for on-chip kernel non-volatile storage.
@@ -231,34 +229,15 @@ SECTIONS
       *(.storage* storage*)
       _estorage = .;
       . = ALIGN(PAGE_SIZE);
-    } > rom
+    } > srom
     . = ALIGN(PAGE_SIZE);
-
-    /* Secure flash region for Arm TrustZone.
-     *
-     * Must be composed of a number of fixed-size TrustZone regions with an
-     * optional NSC (Non-Secure Callable) region at the end.
-     */
-    .secure ALIGN(SEC_FLASH_REG_SIZE) :
-    {
-      _ssecure = .;
-      KEEP(*(.secure.text));
-
-      /* NSC subregion goes at the end of the secure region. */
-      /*. = ALIGN(SEC_FLASH_REG_SIZE) - SEC_FLASH_NSC_SIZE;
-      _snsc = .;
-      KEEP(*(.secure.nsc));
-
-      . = ALIGN(SEC_FLASH_REG_SIZE);
-      _ensc = .;*/
-      _esecure = .;
-    } > rom
 
     /* Mark the end of static elements */
     . = ALIGN(4);
     _erodata = .;
     _etext = .;
     _textend = .;   /* alias for _etext expected by some MS toolchains */
+    _esecure_flash = _ssecure_flash + LENGTH(srom); /* symbol to track end of secure rom */
 
 
     /* Customer configuration is most often located at the end of the rom. It is
@@ -268,6 +247,19 @@ SECTIONS
     .ccfg : {
         KEEP(*(.ccfg))
     } > ccfg
+
+    /* Section for nonsecure flash.
+     *
+     * This section is reserved for the non-secure kernel. The first word in
+     * non-secure memory points to the non-secure vector table, so we need
+     * these symbols.
+     */
+    .ns_flash : {
+        . = ALIGN(4);
+        _sns_flash = .;
+        BYTE(0)
+    } > nsrom
+    _ens_flash = _sns_flash + LENGTH(nsrom);
 
 
     /* Section for application binaries in flash.
@@ -335,7 +327,7 @@ SECTIONS
 
         . = ALIGN(4);
         _erelocate = .;
-    } > ram
+    } > sram
 
 
     .sram (NOLOAD) :
@@ -361,7 +353,11 @@ SECTIONS
 
         . = ALIGN(4);
         _ezero = .;
+    } > sram
 
+
+    .nsram (NOLOAD) :
+    {
 
 
         /* Application Memory.
@@ -376,8 +372,8 @@ SECTIONS
         . = ALIGN(MPU_MIN_ALIGN);
         _sappmem = .;
         *(.app_memory)
-    } > ram
-    _eappmem = ORIGIN(ram) + LENGTH(ram);
+    } > nsram
+    _eappmem = ORIGIN(nsram) + LENGTH(nsram);
 
     /* Discard RISC-V relevant .eh_frame, we are not doing unwind on panic
        so it is not needed. */
@@ -387,5 +383,5 @@ SECTIONS
     }
 }
 
-ASSERT((_etext-_stext) + (_erelocate-_srelocate) < LENGTH(rom), "
+ASSERT((_etext-_stext) + (_erelocate-_srelocate) < LENGTH(srom), "
 Text plus relocations exceeds the available ROM space.");
