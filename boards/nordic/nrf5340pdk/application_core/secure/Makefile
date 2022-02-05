@@ -12,7 +12,7 @@ RUSTC_FLAGS ?= \
   -C link-arg=-icf=all \
 
 # TODO: make more generic for release vs debug
-RUSTC_FLAGS_FOR_BIN ?= -C link-arg=-L$(abspath .) -C link-arg=-L$(TARGET_DIRECTORY)/nonsecure/$(TARGET)/release/ -C link-arg=-Map=output.map
+# RUSTC_FLAGS_FOR_BIN ?= -C link-arg=-L$(abspath .) -C link-arg=-L$(TARGET_DIRECTORY)/nonsecure/$(TARGET)/release/ -C link-arg=-Map=output.map
 
 include ../../../../Makefile.common
 
@@ -56,6 +56,11 @@ jlink:
 	JLinkExe -device nRF5340_xxAA_APP -if swd -speed 1000
 
 hex: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).hex
+
+# extracts the nsc symbols as an empty symbol table for linking against the
+# nonsecure image
+nsc_symtab: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).elf
+	arm-none-eabi-objcopy --extract-symbol -j .nsc $< $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/nrf5340dk-app-nsc.syms
 
 # Convert .bin to .hex
 $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).hex: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).elf

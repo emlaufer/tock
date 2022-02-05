@@ -27,8 +27,30 @@ impl<'a, I: InterruptService<DeferredCallTask> + 'a> NRF53<'a, I> {
     }
 }
 
+// TODO: there probably could be a better way about this...
+pub struct Nrf53NSAppDefaultPeripherals<'a> {
+    // TODO: for now, just assume we have access to all GPIO pins,
+    //       and that the GPIO port is properly mapped.
+    pub gpio_port: crate::gpio::Port<'a, { crate::gpio::NUM_PINS }>,
+    pub rtc0: crate::rtc::Rtc<'a>,
+    pub uarte0: crate::uart::Uarte<'a>,
+}
+
+impl<'a> Nrf53NSAppDefaultPeripherals<'a> {
+    pub fn new() -> Self {
+        Self {
+            gpio_port: crate::gpio::nrf53_gpio_create_ns(),
+            rtc0: crate::rtc::Rtc::new(crate::rtc::RTC0_BASE_NONSECURE),
+            uarte0: crate::uart::Uarte::new(crate::uart::UARTE0_BASE_NONSECURE),
+        }
+    }
+}
+
 pub struct Nrf53AppDefaultPeripherals<'a> {
-    // TODO: is this technically a peripheral??
+    // TODO: How should we handle shared peripherals. E.g. if secure and nonsecure both use a
+    //       peripheral (e.g. UART), secure needs to set it up, then nonsecure can just assume
+    //       it is good. If secure world doesn't use a peripheral then nonsecure world needs
+    //       to set it up.
     pub gpio_port: crate::gpio::Port<'a, { crate::gpio::NUM_PINS }>,
     pub pwr_clk: crate::power::Power<'a>,
     pub rtc0: crate::rtc::Rtc<'a>,
@@ -42,10 +64,14 @@ pub struct Nrf53AppDefaultPeripherals<'a> {
 impl<'a> Nrf53AppDefaultPeripherals<'a> {
     pub fn new() -> Self {
         Self {
+            // TODO: some of these addresses may change depending on whether or not they are used
+            //       in non-secure code. For example, the UARTE is mapped only once, either in
+            //       secure or non-secure memory depending an SPU register. Others (e.g. GPIO)
+            //       are split and shouldn't change.
             gpio_port: crate::gpio::nrf53_gpio_create(),
             pwr_clk: crate::power::Power::new(crate::power::POWER_BASE_SECURE),
-            rtc0: crate::rtc::Rtc::new(crate::rtc::RTC0_BASE_SECURE),
-            uarte0: crate::uart::Uarte::new(crate::uart::UARTE0_BASE_SECURE),
+            rtc0: crate::rtc::Rtc::new(crate::rtc::RTC0_BASE_NONSECURE),
+            uarte0: crate::uart::Uarte::new(crate::uart::UARTE0_BASE_NONSECURE),
             spi0: crate::spi::Spi::new(crate::spi::SECURE_INSTANCES[0]),
             spu: crate::spu::Spu::new(),
             clock: crate::clock::Clock::new(crate::clock::CLOCK_BASE_SECURE),

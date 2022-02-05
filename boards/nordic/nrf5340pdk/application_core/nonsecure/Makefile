@@ -2,6 +2,7 @@
 
 TARGET=thumbv8m.main-none-eabi
 PLATFORM=nrf5340pdk-app-nonsecure
+NSC_SYMS=nrf5340dk-app-nsc.syms
 
 RUSTC_FLAGS ?= \
   -C link-arg=-Tlayout.ld \
@@ -12,7 +13,7 @@ RUSTC_FLAGS ?= \
   -C link-arg=-icf=all \
 
 # TODO: make more generic for release vs debug
-#RUSTC_FLAGS_FOR_BIN ?= -C link-arg=-L$(abspath .) -C link-arg=-L$(TARGET_DIRECTORY)/nonsecure/$(TARGET)/release/ -C link-arg=-Map=output.map
+RUSTC_FLAGS_FOR_BIN ?= -C link-arg=-L$(abspath .) -C link-arg=--just-symbols=$(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(NSC_SYMS)
 
 include ../../../../Makefile.common
 

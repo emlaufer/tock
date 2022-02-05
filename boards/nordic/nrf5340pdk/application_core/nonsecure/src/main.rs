@@ -8,165 +8,199 @@
 #![feature(global_asm)]
 #![feature(naked_functions)]
 
+use kernel::{static_init};
+use kernel::component::Component;
+use kernel::hil::led::LedLow;
+use kernel::hil::time::Counter;
+use nrf53::gpio::Pin;
+use nrf53::chip::Nrf53NSAppDefaultPeripherals;
 
 /// Debug Writer
 pub mod io;
+pub mod crt1;
 
-// TODO: move these elsewhere....
-//       Perhaps put all vectors in crt1, just with different section names
-extern "C" {
-    // _estack is not really a function, but it makes the types work
-    // You should never actually invoke it!!
-    fn _estack();
-}
+const LED1_PIN: Pin = Pin::P0_28;
+const LED2_PIN: Pin = Pin::P0_29;
+const LED3_PIN: Pin = Pin::P0_30;
+const LED4_PIN: Pin = Pin::P0_31;
 
-#[cfg_attr(
-    all(target_arch = "arm", target_os = "none"),
-    link_section = ".vectors"
-)]
-// used Ensures that the symbol is kept until the final binary
-#[cfg_attr(all(target_arch = "arm", target_os = "none"), used)]
-/// ARM Cortex M Vector Table
-pub static BASE_VECTORS: [unsafe extern "C" fn(); 16] = [
-    // Stack Pointer
-    _estack,
-    // Reset Handler
-    initialize_ram_jump_to_main,
-    // NMI
-    unhandled_interrupt,
-    // Hard Fault
-    unhandled_interrupt,
-    // Memory Management Fault
-    unhandled_interrupt,
-    // Bus Fault
-    unhandled_interrupt,
-    // Usage Fault
-    unhandled_interrupt,
-    // Reserved
-    unhandled_interrupt,
-    // Reserved
-    unhandled_interrupt,
-    // Reserved
-    unhandled_interrupt,
-    // Reserved
-    unhandled_interrupt,
-    // SVCall
-    unhandled_interrupt,
-    // Reserved for Debug
-    unhandled_interrupt,
-    // Reserved
-    unhandled_interrupt,
-    // PendSv
-    unhandled_interrupt,
-    // SysTick
-    unhandled_interrupt,
-];
+// The nRF5340PDK buttons (see back of board)
+const BUTTON1_PIN: Pin = Pin::P0_23;
+const BUTTON2_PIN: Pin = Pin::P0_24;
+const BUTTON3_PIN: Pin = Pin::P0_08;
+const BUTTON4_PIN: Pin = Pin::P0_09;
 
+const UART_RTS: Option<Pin> = Some(Pin::P0_19);
+const UART_TXD: Pin = Pin::P0_20;
+const UART_CTS: Option<Pin> = Some(Pin::P0_21);
+const UART_RXD: Pin = Pin::P0_22;
 
-#[cfg_attr(
-    all(target_arch = "arm", target_os = "none"),
-    link_section = ".vectors"
-)]
-// used Ensures that the symbol is kept until the final binary
-#[cfg_attr(all(target_arch = "arm", target_os = "none"), used)]
-pub static IRQS: [unsafe extern "C" fn(); 80] = [unhandled_interrupt; 80];
+// Number of concurrent processes this platform supports.
+const NUM_PROCS: usize = 8;
+
+static mut PROCESSES: [Option<&'static dyn kernel::process::Process>; NUM_PROCS] =
+    [None; NUM_PROCS];
 
 /// Dummy buffer that causes the linker to reserve enough space for the stack.
 #[no_mangle]
 #[link_section = ".stack_buffer"]
 pub static mut STACK_MEMORY: [u8; 0x800] = [0; 0x800];
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-pub unsafe extern "C" fn unhandled_interrupt() {
-    let mut interrupt_number: u32;
-
-
-    // IPSR[8:0] holds the currently active interrupt
-    asm!(
-        "mrs r0, ipsr",
-        out("r0") interrupt_number,
-        options(nomem, nostack, preserves_flags)
+#[inline(never)]
+unsafe fn get_peripherals() -> &'static mut Nrf53NSAppDefaultPeripherals<'static> {
+    // Init chip peripheral drivers
+    let nrf53_app_peripherals = static_init!(
+        Nrf53NSAppDefaultPeripherals,
+        Nrf53NSAppDefaultPeripherals::new()
     );
 
-    interrupt_number = interrupt_number & 0x1ff;
-
-    panic!("Unhandled Interrupt. ISR {} is active.", interrupt_number);
+    nrf53_app_peripherals
 }
 
-/// These constants are defined in the linker script.
 extern "C" {
-    static mut _sstack: u32;
-    static mut _szero: u32;
-    static mut _ezero: u32;
-    static mut _etext: u32;
-    static mut _srelocate: u32;
-    static mut _erelocate: u32;
-}
-
-/// Assembly function to initialize the .bss and .data sections in RAM.
-///
-/// We need to (unfortunately) do these operations in assembly because it is
-/// not valid to run Rust code without RAM initialized.
-///
-/// See https://github.com/tock/tock/issues/2222 for more information.
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-#[naked]
-pub unsafe extern "C" fn initialize_ram_jump_to_main() {
-    asm!(
-        "
-    // Start by initializing .bss memory. The Tock linker script defines
-    // `_szero` and `_ezero` to mark the .bss segment.
-    ldr r0, ={sbss}     // r0 = first address of .bss
-    ldr r1, ={ebss}     // r1 = first address after .bss
-
-    movs r2, #0         // r2 = 0
-
-  100: // bss_init_loop
-    cmp r1, r0          // We increment r0. Check if we have reached r1
-                        // (end of .bss), and stop if so.
-    beq 101f            // If r0 == r1, we are done.
-    stm r0!, {{r2}}     // Write a word to the address in r0, and increment r0.
-                        // Since r2 contains zero, this will clear the memory
-                        // pointed to by r0. Using `stm` (store multiple) with the
-                        // bang allows us to also increment r0 automatically.
-    b 100b              // Continue the loop.
-
-  101: // bss_init_done
-
-    // Now initialize .data memory. This involves coping the values right at the
-    // end of the .text section (in flash) into the .data section (in RAM).
-    ldr r0, ={sdata}    // r0 = first address of data section in RAM
-    ldr r1, ={edata}    // r1 = first address after data section in RAM
-    ldr r2, ={etext}    // r2 = address of stored data initial values
-
-  200: // data_init_loop
-    cmp r1, r0          // We increment r0. Check if we have reached the end
-                        // of the data section, and if so we are done.
-    beq 201f            // r0 == r1, and we have iterated through the .data section
-    ldm r2!, {{r3}}     // r3 = *(r2), r2 += 1. Load the initial value into r3,
-                        // and use the bang to increment r2.
-    stm r0!, {{r3}}     // *(r0) = r3, r0 += 1. Store the value to memory, and
-                        // increment r0.
-    b 200b              // Continue the loop.
-
-  201: // data_init_done
-
-    // Now that memory has been initialized, we can jump to main() where the
-    // board initialization takes place and Rust code starts.
-    bl main
-    ",
-        sbss = sym _szero,
-        ebss = sym _ezero,
-        sdata = sym _srelocate,
-        edata = sym _erelocate,
-        etext = sym _etext,
-        options(noreturn)
-    );
+    fn test_gate_veneer();
 }
 
 /// Main function called after RAM initialized.
 #[no_mangle]
 pub unsafe fn main() {
+    let nrf53_app_peripherals = get_peripherals();
+
+    let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(&PROCESSES));
+
+    // interesting point ... now there are two peripheral structs too...
+    // TODO: who should handle gpio interrupts?
+    let gpio = components::gpio::GpioComponent::new(
+        board_kernel,
+        capsules::gpio::DRIVER_NUM,
+        components::gpio_component_helper!(
+            nrf53::gpio::GPIOPin,
+            0 => &nrf53_app_peripherals.gpio_port[Pin::P1_01],
+            1 => &nrf53_app_peripherals.gpio_port[Pin::P1_04],
+            2 => &nrf53_app_peripherals.gpio_port[Pin::P1_05],
+            3 => &nrf53_app_peripherals.gpio_port[Pin::P1_06],
+            4 => &nrf53_app_peripherals.gpio_port[Pin::P1_07],
+            5 => &nrf53_app_peripherals.gpio_port[Pin::P1_08],
+            6 => &nrf53_app_peripherals.gpio_port[Pin::P1_09],
+            7 => &nrf53_app_peripherals.gpio_port[Pin::P1_10],
+            8 => &nrf53_app_peripherals.gpio_port[Pin::P1_11],
+            9 => &nrf53_app_peripherals.gpio_port[Pin::P1_12],
+            10 => &nrf53_app_peripherals.gpio_port[Pin::P1_13],
+            11 => &nrf53_app_peripherals.gpio_port[Pin::P1_14],
+            12 => &nrf53_app_peripherals.gpio_port[Pin::P1_15]
+        ),
+    )
+    .finalize(components::gpio_component_buf!(nrf53::gpio::GPIOPin));
+
+    let button = components::button::ButtonComponent::new(
+        board_kernel,
+        capsules::button::DRIVER_NUM,
+        components::button_component_helper!(
+            nrf53::gpio::GPIOPin,
+            (
+                &nrf53_app_peripherals.gpio_port[BUTTON1_PIN],
+                kernel::hil::gpio::ActivationMode::ActiveLow,
+                kernel::hil::gpio::FloatingState::PullUp
+            ), //23
+            (
+                &nrf53_app_peripherals.gpio_port[BUTTON2_PIN],
+                kernel::hil::gpio::ActivationMode::ActiveLow,
+                kernel::hil::gpio::FloatingState::PullUp
+            ), //24
+            (
+                &nrf53_app_peripherals.gpio_port[BUTTON3_PIN],
+                kernel::hil::gpio::ActivationMode::ActiveLow,
+                kernel::hil::gpio::FloatingState::PullUp
+            ), //8
+            (
+                &nrf53_app_peripherals.gpio_port[BUTTON4_PIN],
+                kernel::hil::gpio::ActivationMode::ActiveLow,
+                kernel::hil::gpio::FloatingState::PullUp
+            ) //9
+        ),
+    )
+    .finalize(components::button_component_buf!(nrf53::gpio::GPIOPin));
+
+    let led = components::led::LedsComponent::new().finalize(components::led_component_helper!(
+        LedLow<'static, nrf53::gpio::GPIOPin>,
+        LedLow::new(&nrf53_app_peripherals.gpio_port[LED1_PIN]),
+        LedLow::new(&nrf53_app_peripherals.gpio_port[LED2_PIN]),
+        LedLow::new(&nrf53_app_peripherals.gpio_port[LED3_PIN]),
+        LedLow::new(&nrf53_app_peripherals.gpio_port[LED4_PIN]),
+    ));
+
+    let rtc = &nrf53_app_peripherals.rtc0;
+    let _ = rtc.start();
+    let mux_alarm = components::alarm::AlarmMuxComponent::new(rtc)
+        .finalize(components::alarm_mux_component_helper!(nrf53::rtc::Rtc));
+    let alarm = components::alarm::AlarmDriverComponent::new(
+        board_kernel,
+        capsules::alarm::DRIVER_NUM,
+        mux_alarm,
+    )
+    .finalize(components::alarm_component_helper!(nrf53::rtc::Rtc));
+
+    // TODO: where should this live? uar
+    nrf53_app_peripherals.uarte0.initialize(
+        nrf53::pinmux::Pinmux::new(UART_TXD as u32),
+        nrf53::pinmux::Pinmux::new(UART_RXD as u32),
+        UART_CTS.map(|x| nrf53::pinmux::Pinmux::new(x as u32)),
+        UART_RTS.map(|x| nrf53::pinmux::Pinmux::new(x as u32)),
+    );
+
+    // Create a shared UART channel for the console and for kernel debug.
+    /*let uart_mux =
+        components::console::UartMuxComponent::new(uart_channel, 115200, dynamic_deferred_caller)
+            .finalize(());*/
+
+    //debug_sync!("HI THERE");
+
+    use kernel::hil::gpio::Configure;
+    use kernel::hil::gpio::Output;
+    let led = &nrf53_app_peripherals.gpio_port[LED2_PIN];
+    led.make_output();
+    led.clear();
+
+    test_gate_veneer();
+    loop {};
+
+    //let button = components::button::ButtonComponent::new(
+    //    board_kernel,
+    //    capsules::button::DRIVER_NUM,
+    //    components::button_component_helper!(
+    //        nrf53::gpio::GPIOPin,
+    //        (
+    //            &nrf53_app_peripherals.gpio_port[BUTTON1_PIN],
+    //            kernel::hil::gpio::ActivationMode::ActiveLow,
+    //            kernel::hil::gpio::FloatingState::PullUp
+    //        ), //23
+    //        (
+    //            &nrf53_app_peripherals.gpio_port[BUTTON2_PIN],
+    //            kernel::hil::gpio::ActivationMode::ActiveLow,
+    //            kernel::hil::gpio::FloatingState::PullUp
+    //        ), //24
+    //        (
+    //            &nrf53_app_peripherals.gpio_port[BUTTON3_PIN],
+    //            kernel::hil::gpio::ActivationMode::ActiveLow,
+    //            kernel::hil::gpio::FloatingState::PullUp
+    //        ), //8
+    //        (
+    //            &nrf53_app_peripherals.gpio_port[BUTTON4_PIN],
+    //            kernel::hil::gpio::ActivationMode::ActiveLow,
+    //            kernel::hil::gpio::FloatingState::PullUp
+    //        ) //9
+    //    ),
+    //)
+    //.finalize(components::button_component_buf!(nrf53::gpio::GPIOPin));
+
+    //let led = components::led::LedsComponent::new().finalize(components::led_component_helper!(
+    //    LedLow<'static, nrf53::gpio::GPIOPin>,
+    //    LedLow::new(&nrf53_app_peripherals.gpio_port[LED1_PIN]),
+    //    LedLow::new(&nrf53_app_peripherals.gpio_port[LED2_PIN]),
+    //    LedLow::new(&nrf53_app_peripherals.gpio_port[LED3_PIN]),
+    //    LedLow::new(&nrf53_app_peripherals.gpio_port[LED4_PIN]),
+    //));
+
     core::ptr::write_volatile(0x40842518 as *mut u32, 1 << 30);
     core::ptr::write_volatile(0x4084250C as *mut u32, 1 << 30);
     loop {}

@@ -225,7 +225,7 @@ register_bitfields! [u32,
 
 // Clock registers
 #[allow(dead_code)]
-const CLOCK_BASE_NONSECURE: StaticRef<ClockRegisters> =
+pub const CLOCK_BASE_NONSECURE: StaticRef<ClockRegisters> =
     unsafe { StaticRef::new(0x40005000 as *const ClockRegisters) };
 pub const CLOCK_BASE_SECURE: StaticRef<ClockRegisters> =
     unsafe { StaticRef::new(0x50005000 as *const ClockRegisters) };

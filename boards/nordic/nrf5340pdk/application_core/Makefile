@@ -11,8 +11,10 @@ NRFJPROG=nrfjprog
 # Upload the kernel over serial/bootloader
 .PHONY: program
 program: 
-	make -C nonsecure hex
 	make -C secure hex
+	# TODO: this causes a cargo rebuild...just put in elf compilation step later
+	make -C secure nsc_symtab
+	make -C nonsecure hex
 	#$(NRFJPROG) --recover
 	$(NRFJPROG) --program $(SECURE_HEX) --chiperase
 	$(NRFJPROG) --program $(NONSECURE_HEX)

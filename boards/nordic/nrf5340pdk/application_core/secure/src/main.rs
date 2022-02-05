@@ -66,7 +66,8 @@
 #![feature(cmse_nonsecure_entry)]
 #![feature(abi_c_cmse_nonsecure_call)]
 #![feature(global_asm)]
-#![deny(missing_docs)]
+#![feature(naked_functions)]
+//#![deny(missing_docs)]
 
 use kernel::component::Component;
 use kernel::dynamic_deferred_call::{DynamicDeferredCall, DynamicDeferredCallClientState};
@@ -113,6 +114,9 @@ const SPI_MX25R6435F_HOLD_PIN: Pin = Pin::P0_16;
 /// Debug Writer
 pub mod io;
 
+/// Secure mode gates and veneers
+pub mod gates;
+
 /// ARM TrustZone/SPU support.
 mod trustzone;
 
@@ -142,11 +146,6 @@ static mut PROCESS_PRINTER: Option<&'static kernel::process::ProcessPrinterText>
 #[no_mangle]
 #[link_section = ".stack_buffer"]
 pub static mut STACK_MEMORY: [u8; 0x800] = [0; 0x800];
-
-/// Dummy buffer that causes the linker to reserve enough space for the stack.
-#[no_mangle]
-#[link_section = ".ns_stack_buffer"]
-pub static mut NS_STACK_MEMORY: [u8; 0x800] = [0; 0x800];
 
 /// Supported drivers by the platform
 pub struct Platform {
@@ -235,6 +234,8 @@ unsafe fn get_peripherals() -> &'static mut Nrf53AppDefaultPeripherals<'static> 
 
     nrf53_app_peripherals
 }
+
+// nothing for now...
 
 // Sample call to secure function from non-secure code
 /*#[link_section = ".secure.text"]
@@ -406,6 +407,12 @@ pub unsafe fn main() {
     );
     CHIP = Some(chip);
 
+    // TODO: this should be moved to as early as possible
+    //       because some peripheral addresses can be changed, and we need them to stay
+    //       consistent for initialization. For example, the UARTE moves to a 0x4... address
+    //       because we allow access in nonsecure mode
+    trustzone::setup(&chip.sau, &nrf53_app_peripherals.spu);
+
     // Create capabilities that the board needs to call certain protected kernel
     // functions.
     let process_management_capability =
@@ -416,7 +423,7 @@ pub unsafe fn main() {
     // Configure kernel debug gpios as early as possible
     kernel::debug::assign_gpios(Some(&gpio_port[LED1_PIN]), Some(&gpio_port[LED2_PIN]), None);
 
-    let rtc = &nrf53::rtc::RTC0_APP;
+    let rtc = &nrf53_app_peripherals.rtc0;
     let _ = rtc.start();
     let mux_alarm = components::alarm::AlarmMuxComponent::new(rtc)
         .finalize(components::alarm_mux_component_helper!(nrf53::rtc::Rtc));
@@ -427,6 +434,7 @@ pub unsafe fn main() {
     )
     .finalize(components::alarm_component_helper!(nrf53::rtc::Rtc));
 
+    // CALLER: should be in secure world.... called by 
     let dynamic_deferred_call_clients =
         static_init!([DynamicDeferredCallClientState; 2], Default::default());
     let dynamic_deferred_caller = static_init!(
@@ -488,10 +496,6 @@ pub unsafe fn main() {
     // Create the debugger object that handles calls to `debug!()`.
     components::debug_writer::DebugWriterComponent::new(uart_mux).finalize(());
 
-    /* TODO: move above probs */
-    // move to non-secure world...TODO: refactor how this works
-    trustzone::setup(&chip.sau, &nrf53_app_peripherals.spu);
-
     /// These symbols are defined in the linker script.
     extern "C" {
         /// Beginning of the ROM region containing the non-secure kernel.
@@ -505,9 +509,8 @@ pub unsafe fn main() {
     let ns_start = ns_vector_table[1];
 
     // TODO: fix debug writer...wont flush`
-    //panic!("Got addresses: {:x} {:x}", sns_stack, sns_start);
+    //panic!("Got addresses: {:x} {:x}", ns_estack, ns_start);
     //loop {};
-
     asm!("msr MSP_NS, {}",
            in(reg) ns_estack);
     let one = 1;

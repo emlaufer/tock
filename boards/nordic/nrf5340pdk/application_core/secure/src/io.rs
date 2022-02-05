@@ -45,7 +45,7 @@ impl IoWrite for Writer {
                 // Here, we create a second instance of the Uarte struct.
                 // This is okay because we only call this during a panic, and
                 // we will never actually process the interrupts
-                let uart = nrf53::uart::Uarte::new(nrf53::uart::UARTE0_BASE_SECURE);
+                let uart = nrf53::uart::Uarte::new(nrf53::uart::UARTE0_BASE_NONSECURE);
                 if !*initialized {
                     *initialized = true;
                     let _ = uart.configure(uart::Parameters {
@@ -95,10 +95,13 @@ impl IoWrite for Writer {
 }
 
 #[cfg(not(test))]
+#[inline(never)]
 #[no_mangle]
 #[panic_handler]
 /// Panic handler
 pub unsafe extern "C" fn panic_fmt(pi: &PanicInfo) -> ! {
+        core::ptr::write_volatile(0x50842518 as *mut u32, 1 << 30);
+        core::ptr::write_volatile(0x5084250C as *mut u32, 1 << 30);
     const LED2_PIN: Pin = Pin::P0_28;
     let led_kernel_pin = &nrf53::gpio::GPIOPin::new(LED2_PIN, nrf53::gpio::GPIO_BASE_ADDRESS_SECURE, nrf53::gpio::GPIOTE0_BASE);
     let led = &mut led::LedLow::new(led_kernel_pin);

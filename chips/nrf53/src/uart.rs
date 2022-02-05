@@ -20,7 +20,7 @@ static mut BYTE: u8 = 0;
 
 // NOTE: UARTE2 and UARTE3 are not functional as of Sept. 2020 (see nRF5340 errata #84).
 #[allow(dead_code)]
-const UARTE0_BASE_NONSECURE: StaticRef<UarteRegisters> =
+pub const UARTE0_BASE_NONSECURE: StaticRef<UarteRegisters> =
     unsafe { StaticRef::new(0x40008000 as *const UarteRegisters) };
 pub const UARTE0_BASE_SECURE: StaticRef<UarteRegisters> =
     unsafe { StaticRef::new(0x50008000 as *const UarteRegisters) };

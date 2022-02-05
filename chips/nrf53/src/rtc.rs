@@ -14,7 +14,7 @@ use kernel::ErrorCode;
 const NUM_CC: usize = 4;
 
 #[allow(dead_code)]
-const RTC0_BASE_NONSECURE: StaticRef<RtcRegisters> =
+pub const RTC0_BASE_NONSECURE: StaticRef<RtcRegisters> =
     unsafe { StaticRef::new(0x40014000 as *const RtcRegisters) };
 pub const RTC0_BASE_SECURE: StaticRef<RtcRegisters> =
     unsafe { StaticRef::new(0x50014000 as *const RtcRegisters) };

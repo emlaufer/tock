@@ -177,6 +177,17 @@ SECTIONS
         /* End constructor/destructor */
     } > srom
 
+    /* NSC subregion goes at the end of a secure region. */
+    .nsc ALIGN(SEC_FLASH_REG_SIZE) - SEC_FLASH_NSC_SIZE : {
+        _snsc = .;
+        KEEP(*(.nsc));
+
+        . = ALIGN(SEC_FLASH_REG_SIZE);
+        _ensc = .;
+        ASSERT(_ensc - _snsc <= SEC_FLASH_NSC_SIZE, "
+               NSC size exceeds maximum length!");
+    } > srom
+
     /* Secure flash region for Arm TrustZone.
      *
      * Must be composed of a number of fixed-size TrustZone regions with an
@@ -244,9 +255,9 @@ SECTIONS
      * conditional, and won't be written if not specified in the board specific
      * linker file.
      */
-    .ccfg : {
+    /*.ccfg : {
         KEEP(*(.ccfg))
-    } > ccfg
+    } > ccfg*/
 
     /* Section for nonsecure flash.
      *
