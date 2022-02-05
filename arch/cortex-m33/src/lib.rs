@@ -372,11 +372,21 @@ unsafe fn kernel_hardfault(faulting_stack: *mut u32, secure_mode: u32) -> ! {
         "Kernel (Non-secure)"
     };
 
-    let shcsr: u32 = core::ptr::read_volatile(0xE000ED24 as *const u32);
-    let cfsr: u32 = core::ptr::read_volatile(0xE000ED28 as *const u32);
-    let hfsr: u32 = core::ptr::read_volatile(0xE000ED2C as *const u32);
-    let mmfar: u32 = core::ptr::read_volatile(0xE000ED34 as *const u32);
-    let bfar: u32 = core::ptr::read_volatile(0xE000ED38 as *const u32);
+    // if in nonsecure world, read the non-secure SCB registers
+    let scb_offset: usize = if secure_mode != 0 {
+        0x00000
+    } else {
+        // nonsecure SCB registers are aliased at a 0x20000 offset from the secure ones
+        0x20000
+    };
+
+    let shcsr: u32 = core::ptr::read_volatile((0xE000ED24 + scb_offset) as *const u32);
+    let cfsr: u32 = core::ptr::read_volatile((0xE000ED28 + scb_offset) as *const u32);
+    let hfsr: u32 = core::ptr::read_volatile((0xE000ED2C + scb_offset) as *const u32);
+    let mmfar: u32 = core::ptr::read_volatile((0xE000ED34 + scb_offset) as *const u32);
+    let bfar: u32 = core::ptr::read_volatile((0xE000ED38 + scb_offset) as *const u32);
+    let sfsr: u32 = core::ptr::read_volatile(0xE000EDE4 as *const u32);
+    let sfar: u32 = core::ptr::read_volatile(0xE000EDE8 as *const u32);
 
     let iaccviol = (cfsr & 0x01) == 0x01;
     let daccviol = (cfsr & 0x02) == 0x02;
@@ -402,6 +412,15 @@ unsafe fn kernel_hardfault(faulting_stack: *mut u32, secure_mode: u32) -> ! {
 
     let vecttbl = (hfsr & 0x02) == 0x02;
     let forced = (hfsr & 0x40000000) == 0x40000000;
+
+    let invep = (sfsr & 0x01) == 0x01;
+    let invis = (sfsr & 0x02) == 0x02;
+    let inver = (sfsr & 0x04) == 0x04;
+    let auviol = (sfsr & 0x08) == 0x08;
+    let invtran = (sfsr & 0x10) == 0x10;
+    let slsperr = (sfsr & 0x20) == 0x20;
+    let sfarvalid = (sfsr & 0x40) == 0x40;
+    let slserr = (sfsr & 0x80) == 0x80;
 
     let ici_it = (((stacked_xpsr >> 25) & 0x3) << 6) | ((stacked_xpsr >> 10) & 0x3f);
     let thumb_bit = ((stacked_xpsr >> 24) & 0x1) == 1;
@@ -443,8 +462,16 @@ unsafe fn kernel_hardfault(faulting_stack: *mut u32, secure_mode: u32) -> ! {
          \tDivide By Zero:                     {}\r\n\
          \tBus Fault on Vector Table Read:     {}\r\n\
          \tForced Hard Fault:                  {}\r\n\
+         \tInvalid Secure Entry Point:         {}\r\n\
+         \tInvalid Integrity Signature:        {}\r\n\
+         \tInvalid Exception Return:           {}\r\n\
+         \tAttribution Unit Violation:         {}\r\n\
+         \tInvalid NS to S Transition:         {}\r\n\
+         \tSecure Lazy FP Fault:               {}\r\n\
+         \tSecure Lazy Activation Fault:       {}\r\n\
          \tFaulting Memory Address: (valid: {}) {:#010X}\r\n\
          \tBus Fault Address:       (valid: {}) {:#010X}\r\n\
+         \tSecure Fault Address:    (valid: {}) {:#010X}\r\n\
          ",
         mode_str,
         option_env!("TOCK_KERNEL_VERSION").unwrap_or("unknown"),
@@ -494,10 +521,19 @@ unsafe fn kernel_hardfault(faulting_stack: *mut u32, secure_mode: u32) -> ! {
         divbysero,
         vecttbl,
         forced,
+        invep,
+        invis,
+        inver,
+        auviol,
+        invtran,
+        slsperr,
+        slserr,
         mmfarvalid,
         mmfar,
         bfarvalid,
-        bfar
+        bfar,
+        sfarvalid,
+        sfar
     );
 }
 
