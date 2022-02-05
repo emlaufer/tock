@@ -1,5 +1,5 @@
 [package]
-name = "nrf5340pdk-net"
+name = "nrf5340dk-net"
 version = "0.1.0"
 authors = ["Tock Project Developers <tock-dev@googlegroups.com>"]
 build = "build.rs"

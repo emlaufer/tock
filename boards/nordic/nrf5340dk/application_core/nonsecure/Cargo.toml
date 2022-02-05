@@ -1,5 +1,5 @@
 [package]
-name = "nrf5340pdk-app-nonsecure"
+name = "nrf5340dk-app-nonsecure"
 version = "0.1.0"
 authors = ["Tock Project Developers <tock-dev@googlegroups.com>"]
 build = "build.rs"

@@ -1,7 +1,7 @@
 # Makefile for building the tock kernel for the nRF development kit
 
 TARGET=thumbv8m.main-none-eabi
-PLATFORM=nrf5340pdk-app-nonsecure
+PLATFORM=nrf5340dk-app-nonsecure
 NSC_SYMS=nrf5340dk-app-nsc.syms
 
 RUSTC_FLAGS ?= \

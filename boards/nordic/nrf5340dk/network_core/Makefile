@@ -1,7 +1,7 @@
 # Makefile for building the tock kernel for the nRF development kit
 
 TARGET=thumbv7em-none-eabi
-PLATFORM=nrf5340pdk-net
+PLATFORM=nrf5340dk-net
 
 include ../../../Makefile.common
 
