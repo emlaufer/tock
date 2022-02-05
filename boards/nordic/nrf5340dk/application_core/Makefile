@@ -1,6 +1,6 @@
 
 TARGET=thumbv8m.main-none-eabi
-PLATFORM=nrf5340pdk-app
+PLATFORM=nrf5340dk-app
 
 # TODO make this more general...
 SECURE_HEX=../../../../target/$(TARGET)/release/$(PLATFORM)-secure.hex

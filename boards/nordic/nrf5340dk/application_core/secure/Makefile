@@ -60,7 +60,7 @@ hex: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).hex
 # extracts the nsc symbols as an empty symbol table for linking against the
 # nonsecure image
 nsc_symtab: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).elf
-	arm-none-eabi-objcopy --extract-symbol -j .nsc $< $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/nrf5340dk-app-nsc.syms
+	arm-none-eabi-objcopy --extract-symbol -j .nsc $< $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/nrf5340dk-app-nsc.syms
 
 # Convert .bin to .hex
 $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).hex: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).elf
