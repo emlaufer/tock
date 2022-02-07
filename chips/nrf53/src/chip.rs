@@ -70,8 +70,11 @@ impl<'a> Nrf53AppDefaultPeripherals<'a> {
             //       are split and shouldn't change.
             gpio_port: crate::gpio::nrf53_gpio_create(),
             pwr_clk: crate::power::Power::new(crate::power::POWER_BASE_SECURE),
-            rtc0: crate::rtc::Rtc::new(crate::rtc::RTC0_BASE_NONSECURE),
-            uarte0: crate::uart::Uarte::new(crate::uart::UARTE0_BASE_NONSECURE),
+            //rtc0: crate::rtc::Rtc::new(crate::rtc::RTC0_BASE_NONSECURE),
+            rtc0: crate::rtc::Rtc::new(crate::rtc::RTC0_BASE_SECURE),
+            //uarte0: crate::uart::Uarte::new(crate::uart::UARTE0_BASE_NONSECURE),
+            uarte0: crate::uart::Uarte::new(crate::uart::UARTE0_BASE_SECURE),
+            //spi0: crate::spi::Spi::new(crate::spi::NONSECURE_INSTANCES[0]),
             spi0: crate::spi::Spi::new(crate::spi::SECURE_INSTANCES[0]),
             spu: crate::spu::Spu::new(),
             clock: crate::clock::Clock::new(crate::clock::CLOCK_BASE_SECURE),

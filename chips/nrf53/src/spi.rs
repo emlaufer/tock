@@ -54,7 +54,7 @@ pub const SECURE_INSTANCES: [StaticRef<SpiRegisters>; 5] = unsafe {
 };
 
 #[allow(dead_code)]
-const NONSECURE_INSTANCES: [StaticRef<SpiRegisters>; 5] = unsafe {
+pub const NONSECURE_INSTANCES: [StaticRef<SpiRegisters>; 5] = unsafe {
     [
         StaticRef::new(0x40008000 as *const SpiRegisters),
         StaticRef::new(0x40009000 as *const SpiRegisters),
@@ -608,7 +608,19 @@ impl Spi {
     }
 
     pub fn is_enabled(&self) -> bool {
-        !self.registers.enable.matches_all(Enable::ENABLE::Disabled)
+        self.is_master_enabled() || self.is_slave_enabled()
+    }
+
+    fn is_master_enabled(&self) -> bool {
+        self.registers
+            .enable
+            .matches_all(Enable::ENABLE::SpimEnabled)
+    }
+
+    fn is_slave_enabled(&self) -> bool {
+        self.registers
+            .enable
+            .matches_all(Enable::ENABLE::SpisEnabled)
     }
 
     fn set_polarity(&self, polarity: hil::spi::ClockPolarity) -> Result<(), ErrorCode> {

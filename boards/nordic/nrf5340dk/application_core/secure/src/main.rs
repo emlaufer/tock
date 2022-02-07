@@ -80,6 +80,7 @@ use kernel::{capabilities, create_capability, debug, debug_flush_queue, debug_gp
 use nrf53::chip::Nrf53AppDefaultPeripherals;
 use nrf53::gpio::Pin;
 
+
 // The nRF5340PDK LEDs (see back of board)
 const LED1_PIN: Pin = Pin::P0_28;
 const LED2_PIN: Pin = Pin::P0_29;
@@ -145,7 +146,7 @@ static mut PROCESS_PRINTER: Option<&'static kernel::process::ProcessPrinterText>
 /// Dummy buffer that causes the linker to reserve enough space for the stack.
 #[no_mangle]
 #[link_section = ".stack_buffer"]
-pub static mut STACK_MEMORY: [u8; 0x800] = [0; 0x800];
+pub static mut STACK_MEMORY: [u8; 0x1000] = [0; 0x1000];
 
 /// Supported drivers by the platform
 pub struct Platform {
@@ -180,7 +181,7 @@ impl SyscallDriverLookup for Platform {
             capsules::alarm::DRIVER_NUM => f(Some(self.alarm)),
             //capsules::console::DRIVER_NUM => f(Some(self.console)),
             capsules::gpio::DRIVER_NUM => f(Some(self.gpio)),
-            //capsules::led::DRIVER_NUM => f(Some(self.led)),
+            capsules::led::DRIVER_NUM => f(Some(self.led)),
             capsules::button::DRIVER_NUM => f(Some(self.button)),
             kernel::ipc::DRIVER_NUM => f(Some(&self.ipc)),
             _ => f(None),
@@ -411,7 +412,7 @@ pub unsafe fn main() {
     //       because some peripheral addresses can be changed, and we need them to stay
     //       consistent for initialization. For example, the UARTE moves to a 0x4... address
     //       because we allow access in nonsecure mode
-    trustzone::setup(&chip.sau, &nrf53_app_peripherals.spu);
+    //trustzone::setup(&chip.sau, &nrf53_app_peripherals.spu);
 
     // Create capabilities that the board needs to call certain protected kernel
     // functions.
@@ -496,108 +497,99 @@ pub unsafe fn main() {
     // Create the debugger object that handles calls to `debug!()`.
     components::debug_writer::DebugWriterComponent::new(uart_mux).finalize(());
 
-    /// These symbols are defined in the linker script.
-    extern "C" {
-        /// Beginning of the ROM region containing the non-secure kernel.
-        static _sns_flash: u8;
-        /// End of the ROM region containing the non-secure kernel.
-        static _ens_flash: u8;
-    }
-
-    let ns_vector_table = core::slice::from_raw_parts((&_sns_flash as *const u8) as *const usize, 2);
-    let ns_estack = ns_vector_table[0];
-    let ns_start = ns_vector_table[1];
-
-    // TODO: fix debug writer...wont flush`
-    //panic!("Got addresses: {:x} {:x}", ns_estack, ns_start);
-    //loop {};
-    asm!("msr MSP_NS, {}",
-           in(reg) ns_estack);
-    let one = 1;
-    asm!("bics {0}, {1}
-          bxns {0}", in(reg) ns_start, in(reg) one);
-    loop {}
-
-
-    //    //unsafe {core::ptr::write_volatile(0x50842518 as *mut u32, 1 << 30);
-    //    //core::ptr::write_volatile(0x5084250C as *mut u32, 1 << 30);}
-    ////asm!("udf 100");
-    ////jump_to_ns();
-
-    //// setup ns stack
-    //// Start all of the clocks. Low power operation will require a better
-    //// approach than this.
-    //nrf53_app_peripherals.clock.low_stop();
-    //nrf53_app_peripherals.clock.high_stop();
-
-    //// TODO: LFXO requires specific GPIO/oscillator setup....
-    //nrf53_app_peripherals
-    //    .clock
-    //    .low_set_source(nrf53::clock::LowClockSource::LFRC);
-    //nrf53_app_peripherals.clock.low_start();
-    //nrf53_app_peripherals
-    //    .clock
-    //    .high_set_source(nrf53::clock::HighClockSource::HFXO);
-    //nrf53_app_peripherals.clock.high_start();
-    //while !nrf53_app_peripherals.clock.low_started() {}
-    //while !nrf53_app_peripherals.clock.high_started() {}
-
-    //let scheduler = components::sched::round_robin::RoundRobinComponent::new(&PROCESSES)
-    //    .finalize(components::rr_component_helper!(NUM_PROCS));
-
-    //let platform = Platform {
-    //    alarm,
-    //    button,
-    //    pconsole,
-    //    console,
-    //    led,
-    //    gpio,
-    //    ipc: kernel::ipc::IPC::new(
-    //        board_kernel,
-    //        kernel::ipc::DRIVER_NUM,
-    //        &memory_allocation_capability,
-    //    ),
-    //    scheduler,
-    //    systick: cortexm33::systick::SysTick::new_with_calibration(64000000),
-    //};
-
-    //let _ = platform.pconsole.start();
-
-    //debug!("Initialization complete. Entering main loop\r");
-
-
     ///// These symbols are defined in the linker script.
     //extern "C" {
-    //    /// Beginning of the ROM region containing app images.
-    //    static _sapps: u8;
-    //    /// End of the ROM region containing app images.
-    //    static _eapps: u8;
-    //    /// Beginning of the RAM region for app memory.
-    //    static mut _sappmem: u8;
-    //    /// End of the RAM region for app memory.
-    //    static _eappmem: u8;
+    //    /// Beginning of the ROM region containing the non-secure kernel.
+    //    static _sns_flash: u8;
+    //    /// End of the ROM region containing the non-secure kernel.
+    //    static _ens_flash: u8;
     //}
 
-    //kernel::process::load_processes(
-    //    board_kernel,
-    //    chip,
-    //    core::slice::from_raw_parts(
-    //        &_sapps as *const u8,
-    //        &_eapps as *const u8 as usize - &_sapps as *const u8 as usize,
-    //    ),
-    //    core::slice::from_raw_parts_mut(
-    //        &mut _sappmem as *mut u8,
-    //        &_eappmem as *const u8 as usize - &_sappmem as *const u8 as usize,
-    //    ),
-    //    &mut PROCESSES,
-    //    &FAULT_RESPONSE,
-    //    &process_management_capability,
-    //)
-    //.unwrap_or_else(|err| {
-    //    debug!("Error loading processes!");
-    //    debug!("{:?}", err);
-    //});
+    //let ns_vector_table = core::slice::from_raw_parts((&_sns_flash as *const u8) as *const usize, 2);
+    //let ns_estack = ns_vector_table[0];
+    //let ns_start = ns_vector_table[1];
 
-    ////asm!("udf 100");
-    //board_kernel.kernel_loop(&platform, chip, Some(&platform.ipc), &main_loop_capability);
+    //// TODO: fix debug writer...wont flush`
+    ////panic!("Got addresses: {:x} {:x}", ns_estack, ns_start);
+    ////loop {};
+    //asm!("msr MSP_NS, {}",
+    //       in(reg) ns_estack);
+    //let one = 1;
+    //asm!("bics {0}, {1}
+    //      bxns {0}", in(reg) ns_start, in(reg) one);
+    //loop {}
+
+    // Start all of the clocks. Low power operation will require a better
+    // approach than this.
+    nrf53_app_peripherals.clock.low_stop();
+    nrf53_app_peripherals.clock.high_stop();
+
+    // TODO: LFXO requires specific GPIO/oscillator setup....
+    nrf53_app_peripherals
+        .clock
+        .low_set_source(nrf53::clock::LowClockSource::LFRC);
+    nrf53_app_peripherals.clock.low_start();
+    nrf53_app_peripherals
+        .clock
+        .high_set_source(nrf53::clock::HighClockSource::HFXO);
+    nrf53_app_peripherals.clock.high_start();
+    while !nrf53_app_peripherals.clock.low_started() {}
+    while !nrf53_app_peripherals.clock.high_started() {}
+
+    let scheduler = components::sched::round_robin::RoundRobinComponent::new(&PROCESSES)
+        .finalize(components::rr_component_helper!(NUM_PROCS));
+
+    let platform = Platform {
+        alarm,
+        button,
+        pconsole,
+        console,
+        led,
+        gpio,
+        ipc: kernel::ipc::IPC::new(
+            board_kernel,
+            kernel::ipc::DRIVER_NUM,
+            &memory_allocation_capability,
+        ),
+        scheduler,
+        systick: cortexm33::systick::SysTick::new_with_calibration(64000000),
+    };
+
+    let _ = platform.pconsole.start();
+
+    debug!("Initialization complete. Entering main loop\r");
+
+    /// These symbols are defined in the linker script.
+    extern "C" {
+        /// Beginning of the ROM region containing app images.
+        static _sapps: u8;
+        /// End of the ROM region containing app images.
+        static _eapps: u8;
+        /// Beginning of the RAM region for app memory.
+        static mut _sappmem: u8;
+        /// End of the RAM region for app memory.
+        static _eappmem: u8;
+    }
+
+    kernel::process::load_processes(
+        board_kernel,
+        chip,
+        core::slice::from_raw_parts(
+            &_sapps as *const u8,
+            &_eapps as *const u8 as usize - &_sapps as *const u8 as usize,
+        ),
+        core::slice::from_raw_parts_mut(
+            &mut _sappmem as *mut u8,
+            &_eappmem as *const u8 as usize - &_sappmem as *const u8 as usize,
+        ),
+        &mut PROCESSES,
+        &FAULT_RESPONSE,
+        &process_management_capability,
+    )
+    .unwrap_or_else(|err| {
+        debug!("Error loading processes!");
+        debug!("{:?}", err);
+    });
+
+    board_kernel.kernel_loop(&platform, chip, Some(&platform.ipc), &main_loop_capability);
 }

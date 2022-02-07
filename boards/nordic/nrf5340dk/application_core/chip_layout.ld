@@ -3,9 +3,9 @@ MEMORY
 {
   /* TODO: it would be nice to automatically lay out rom into srom and nsrom
    *       based on used space */
-  srom(rx)    : ORIGIN = 0x00000000, LENGTH = 128K
-  nsrom(rx)   : ORIGIN = 0x00020000, LENGTH = 64K
-  prog (rx)   : ORIGIN = 0x00030000, LENGTH = 832K
+  srom(rx)    : ORIGIN = 0x00000000, LENGTH = 384K
+  nsrom(rx)   : ORIGIN = 0x00030000, LENGTH = 128K
+  prog (rx)   : ORIGIN = 0x00050000, LENGTH = 512K
   sram (rwx)  : ORIGIN = 0x20000000, LENGTH = 128K
   nsram (rwx) : ORIGIN = 0x20020000, LENGTH = 384K
 }

@@ -370,6 +370,7 @@ SECTIONS
     .nsram (NOLOAD) :
     {
 
+        /* TODO: need to reserve some ram for nonsecure kernel */
 
         /* Application Memory.
          *

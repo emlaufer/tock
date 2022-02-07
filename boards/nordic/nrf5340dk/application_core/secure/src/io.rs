@@ -45,7 +45,8 @@ impl IoWrite for Writer {
                 // Here, we create a second instance of the Uarte struct.
                 // This is okay because we only call this during a panic, and
                 // we will never actually process the interrupts
-                let uart = nrf53::uart::Uarte::new(nrf53::uart::UARTE0_BASE_NONSECURE);
+                //let uart = nrf53::uart::Uarte::new(nrf53::uart::UARTE0_BASE_NONSECURE);
+                let uart = nrf53::uart::Uarte::new(nrf53::uart::UARTE0_BASE_SECURE);
                 if !*initialized {
                     *initialized = true;
                     let _ = uart.configure(uart::Parameters {

@@ -57,7 +57,11 @@ jlink:
 	JLinkExe -device nRF5340_xxAA_APP -if swd -speed 1000
 
 hex: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).hex
+hex-debug: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/debug/$(PLATFORM).hex
 
 # Convert .bin to .hex
 $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).hex: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).elf
+	$(OBJCOPY) $< -O ihex $@
+
+$(TOCK_ROOT_DIRECTORY)target/$(TARGET)/debug/$(PLATFORM).hex: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/debug/$(PLATFORM).elf
 	$(OBJCOPY) $< -O ihex $@

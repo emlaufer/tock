@@ -1,0 +1,22 @@
+1. One possible way to allow dual boundary:
+    1. compile lib 1 -> is there a way to not care about undef symbols?
+    2. compile lib 2 -> same
+    3. have symbol tables from both, then link with both
+    4. profit
+2. Gameplan:
+    1. GPIO
+    2. RTC
+    3. Uart?
+    4. simple blink light process
+
+    TODO: once thigns are in Nonsecure mode, going to need to change handlers
+        to return to nonsecure?
+
+Issues;
+1. Debug mode is too large to flash now...
+
+NTIS:
+1. Improve tockloader error message in jlinkexe.py line 416
+    - why?
+        says could not determine current board or arch or jtag device name,
+        but also gets thrown if couldn't detect the page size...

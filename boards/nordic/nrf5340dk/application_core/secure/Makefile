@@ -56,12 +56,19 @@ jlink:
 	JLinkExe -device nRF5340_xxAA_APP -if swd -speed 1000
 
 hex: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).hex
+hex-debug: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/debug/$(PLATFORM).hex
 
 # extracts the nsc symbols as an empty symbol table for linking against the
 # nonsecure image
-nsc_symtab: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).elf
+nsc-symtab: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).elf
 	arm-none-eabi-objcopy --extract-symbol -j .nsc $< $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/nrf5340dk-app-nsc.syms
+
+nsc-symtab-debug: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/debug/$(PLATFORM).elf
+	arm-none-eabi-objcopy --extract-symbol -j .nsc $< $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/debug/nrf5340dk-app-nsc.syms
 
 # Convert .bin to .hex
 $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).hex: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).elf
+	$(OBJCOPY) $< -O ihex $@
+
+$(TOCK_ROOT_DIRECTORY)target/$(TARGET)/debug/$(PLATFORM).hex: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/debug/$(PLATFORM).elf
 	$(OBJCOPY) $< -O ihex $@

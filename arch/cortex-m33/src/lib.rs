@@ -71,6 +71,9 @@ pub unsafe extern "C" fn systick_handler() {
     /* http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dai0321a/BIHFJCAC.html */
     isb
 
+    // Set the mode bit of LR to return to Thread mode with the process stack
+    orr lr, #0xC
+
     // This will resume in the switch to user function where application state
     // is saved and the scheduler can choose what to do next.
     bx   LR
@@ -92,9 +95,10 @@ pub unsafe extern "C" fn svc_handler() {
     asm!(
         "
     // First check to see which direction we are going in. If the link register
-    // is something other than 0xfffffff9, then we are coming from an app which
-    // has called a syscall.
-    cmp lr, #0xfffffff9
+    // has bit 2 set (SPSEL), then we are coming from an app which has called a
+    // syscall.
+    tst lr, #0x4
+    /*cmp lr, #0xfffffff9*/
     bne 100f // to_kernel
 
     // If we get here, then this is a context switch from the kernel to the
@@ -104,6 +108,11 @@ pub unsafe extern "C" fn svc_handler() {
     /* CONTROL writes must be followed by ISB */
     /* http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dai0321a/BIHFJCAC.html */
     isb
+
+    // Set the mode bit of LR to return to Thread mode with the process stack
+    orr lr, #0xC
+    /*movw lr, #0xfffd*/
+    /*movt lr, #0xffff*/
 
     // Switch to the app.
     bx lr
@@ -123,6 +132,9 @@ pub unsafe extern "C" fn svc_handler() {
     /* CONTROL writes must be followed by ISB */
     /* http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dai0321a/BIHFJCAC.html */
     isb
+
+    // Unset the mode bits of LR to return to Thread mode with the main stack.
+    bic lr, #0x4
 
     bx lr",
         options(noreturn)
